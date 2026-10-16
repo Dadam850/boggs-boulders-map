@@ -28,6 +28,28 @@ const TrailMap = dynamic(() => import("@/components/TrailMap").then((m) => m.Tra
 
 type Fix = { lat: number; lng: number; at: number };
 type Command = { type: "me" | "all"; id: number };
+type DeviceKind = "ios" | "android" | "other";
+type GpsPhase = "checking" | "need-tap" | "watching" | "denied" | "unavailable";
+
+const GPS_OPTIONS: PositionOptions = {
+  enableHighAccuracy: true,
+  maximumAge: 1000,
+  timeout: 20000,
+};
+
+function detectDevice(): DeviceKind {
+  const ua = navigator.userAgent || "";
+  const touchMac = navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
+  if (/iPad|iPhone|iPod/.test(ua) || touchMac) return "ios";
+  if (/Android/i.test(ua)) return "android";
+  return "other";
+}
+
+function gpsMessage(code: number) {
+  if (code === 1) return "Location is blocked for this site.";
+  if (code === 2) return "Location is off, or GPS has no fix yet.";
+  return "GPS is taking too long. Stay in the open and try again.";
+}
 
 function formatWhen(ts: number) {
   return new Date(ts).toLocaleString(undefined, {
@@ -66,6 +88,10 @@ export function TrailApp() {
   const [fix, setFix] = useState<Fix | null>(null);
   const [trail, setTrail] = useState<Crumb[]>([]);
   const [gpsError, setGpsError] = useState("");
+  const [gpsPhase, setGpsPhase] = useState<GpsPhase>("checking");
+  const [deviceKind, setDeviceKind] = useState<DeviceKind>("other");
+  const [compact, setCompact] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [riders, setRiders] = useState<Rider[]>([]);
   const [trails, setTrails] = useState<StoredTrail[]>([]);
   const [showCrumbs, setShowCrumbs] = useState(true);
@@ -87,6 +113,7 @@ export function TrailApp() {
   const recordRef = useRef(true);
   const trailEpoch = useRef(0);
   const sessionRef = useRef<Session | null>(null);
+  const watchRef = useRef<number | null>(null);
   recordRef.current = recordCrumbs;
   sessionRef.current = session;
   fixRef.current = fix;
@@ -162,6 +189,8 @@ export function TrailApp() {
         if (!cancelled && localStorage.getItem("boggs.sheet") === "1") setShowSheet(true);
         if (!cancelled && localStorage.getItem("boggs.crumbs.show") === "0") setShowCrumbs(false);
         if (!cancelled && localStorage.getItem("boggs.crumbs.record") === "0") setRecordCrumbs(false);
+        if (!cancelled && localStorage.getItem("boggs.compact") === "1") setCompact(true);
+        if (!cancelled) setDeviceKind(detectDevice());
         await rebuildPhotos();
         const savedFlag = await idbGetKv<string>("tilesSaved");
         if (!cancelled) setMapSaved(savedFlag === "1");
@@ -226,19 +255,29 @@ export function TrailApp() {
     };
   }, [uploadPending]);
 
-  useEffect(() => {
-    if (!session) return;
-    let watch = 0;
+  const stopWatch = useCallback(() => {
+    if (watchRef.current != null && "geolocation" in navigator) {
+      navigator.geolocation.clearWatch(watchRef.current);
+    }
+    watchRef.current = null;
+  }, []);
+
+  const beginWatch = useCallback(() => {
     if (!("geolocation" in navigator)) {
+      setGpsPhase("unavailable");
       setGpsError("This phone has no GPS.");
       return;
     }
-    watch = navigator.geolocation.watchPosition(
+    stopWatch();
+    setGpsPhase("watching");
+    setGpsError("");
+    watchRef.current = navigator.geolocation.watchPosition(
       (pos) => {
         const next = { lat: pos.coords.latitude, lng: pos.coords.longitude, at: Date.now() };
         fixRef.current = next;
         setFix(next);
         setGpsError("");
+        setGpsPhase("watching");
         const who = sessionRef.current;
         if (recordRef.current) {
           const updated = appendCrumb(trailRef.current, next);
@@ -251,29 +290,75 @@ export function TrailApp() {
         void idbSetKv("lastFix", next).catch(() => undefined);
       },
       (err) => {
-        setGpsError(
-          err.code === err.PERMISSION_DENIED
-            ? "Location is off. Allow GPS so the group can see you."
-            : "Waiting for a GPS fix.",
-        );
+        const denied = err.code === err.PERMISSION_DENIED;
+        const unavailable = err.code === err.POSITION_UNAVAILABLE;
+        if (denied) {
+          stopWatch();
+          setGpsPhase("denied");
+        } else if (unavailable) {
+          setGpsPhase("unavailable");
+        }
+        setGpsError(gpsMessage(err.code));
       },
-      { enableHighAccuracy: true, maximumAge: 3000, timeout: 20000 },
+      GPS_OPTIONS,
     );
-    void idbGetKv<Fix>("lastFix").then((saved) => {
-      if (saved && !fixRef.current) {
-        fixRef.current = saved;
-        setFix(saved);
+  }, [stopWatch]);
+
+  useEffect(() => {
+    if (!session) {
+      stopWatch();
+      return;
+    }
+    let cancelled = false;
+    let status: PermissionStatus | null = null;
+    const onPerm = () => {
+      if (!status || cancelled) return;
+      if (status.state === "granted") beginWatch();
+      if (status.state === "denied") {
+        stopWatch();
+        setGpsPhase("denied");
+        setGpsError(gpsMessage(1));
       }
+    };
+    (async () => {
+      let perm: PermissionState | "unknown" = "unknown";
+      try {
+        if (navigator.permissions?.query) {
+          status = await navigator.permissions.query({ name: "geolocation" });
+          perm = status.state;
+          status.addEventListener("change", onPerm);
+        }
+      } catch {
+        perm = "unknown";
+      }
+      if (cancelled || watchRef.current != null) return;
+      if (perm === "granted" || perm === "unknown") beginWatch();
+      else if (perm === "denied") {
+        setGpsPhase("denied");
+        setGpsError(gpsMessage(1));
+      } else {
+        setGpsPhase("need-tap");
+        setGpsError("Location is off. Tap Turn on location.");
+      }
+    })();
+    void idbGetKv<Fix>("lastFix").then((saved) => {
+      if (cancelled || !saved || fixRef.current) return;
+      fixRef.current = saved;
+      setFix(saved);
     });
     const userId = session.userId;
     void idbGetKv<Crumb[]>(`trail:${userId}`).then((saved) => {
-      if (!saved?.length || trailRef.current.length) return;
+      if (cancelled || !saved?.length || trailRef.current.length) return;
       const kept = thinCrumbs(saved);
       trailRef.current = kept;
       setTrail(kept);
     });
-    return () => navigator.geolocation.clearWatch(watch);
-  }, [session]);
+    return () => {
+      cancelled = true;
+      status?.removeEventListener("change", onPerm);
+      stopWatch();
+    };
+  }, [session, beginWatch, stopWatch]);
 
   const pullGroup = useCallback(async () => {
     const current = sessionRef.current;
@@ -484,6 +569,13 @@ export function TrailApp() {
     [riders, session],
   );
 
+  const showLocationCard =
+    gpsPhase === "need-tap" ||
+    gpsPhase === "denied" ||
+    gpsPhase === "unavailable" ||
+    (!fix && gpsPhase === "watching" && !!gpsError);
+  const showLocationSteps = gpsPhase === "denied" || gpsPhase === "unavailable";
+
   const status = !online
     ? mapSaved
       ? "No signal · map saved"
@@ -585,6 +677,7 @@ export function TrailApp() {
         showCrumbs={showCrumbs}
         opacity={opacity}
         showSheet={showSheet}
+        compact={compact}
         command={command}
         onPhoto={setOpenPhoto}
       />
@@ -603,7 +696,7 @@ export function TrailApp() {
           type="button"
           variant="light"
           size="glove"
-          className="pointer-events-auto min-h-14 px-3 text-base"
+          className={`pointer-events-auto px-3 ${compact ? "min-h-11 text-sm" : "min-h-14 text-base"}`}
           onClick={() => {
             clearSession();
             setSession(null);
@@ -614,16 +707,92 @@ export function TrailApp() {
         </Button>
       </header>
 
-      {(gpsError || syncNote || storageError) && (
+      {(storageError || syncNote || (!showLocationCard && gpsError)) && (
         <div className="pointer-events-none absolute inset-x-3 top-24 z-[2000]">
           <p className="pointer-events-auto rounded-2xl border-[3px] border-zinc-950 bg-amber-200 px-3 py-2 text-base font-extrabold shadow-[3px_3px_0_#111]">
-            {storageError || gpsError || syncNote}
+            {storageError || syncNote || gpsError}
           </p>
         </div>
       )}
 
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[2000] border-t-[3px] border-zinc-950 bg-[#fffdf6]/95 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur">
-        <div className="pointer-events-auto mx-auto flex max-w-lg flex-col gap-3">
+      {showLocationCard ? (
+        <div className="pointer-events-none absolute inset-x-3 top-24 z-[2100]">
+          <div
+            data-testid="location-prompt"
+            className="pointer-events-auto mx-auto max-w-lg rounded-3xl border-[3px] border-zinc-950 bg-white p-4 shadow-[4px_4px_0_#111]"
+          >
+            <p className="text-2xl font-black leading-none">Location is off</p>
+            <p data-testid="gps-error" className="mt-2 text-base font-bold text-zinc-800">
+              {gpsError || "Tap the button so this phone can ask for GPS."}
+            </p>
+            <Button type="button" data-testid="turn-on-location" className="mt-3 w-full" onClick={beginWatch}>
+              Turn on location
+            </Button>
+            {showLocationSteps ? <LocationSteps kind={deviceKind} /> : null}
+          </div>
+        </div>
+      ) : null}
+
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[2000] border-t-[3px] border-zinc-950 bg-[#fffdf6]/95 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur">
+        <div className="pointer-events-auto mx-auto flex max-w-lg flex-col gap-2">
+          {compact && !menuOpen ? (
+            <div className="grid grid-cols-[1fr_1fr_3.25rem] gap-2">
+              <Button
+                type="button"
+                data-testid="center"
+                className="min-h-12 px-2 text-base"
+                onClick={() => {
+                  if (!fix) setGpsError("Still waiting for GPS.");
+                  setCommand({ type: "me", id: Date.now() });
+                }}
+              >
+                Me
+              </Button>
+              <Button
+                type="button"
+                variant="dark"
+                data-testid="controls-menu"
+                className="min-h-12 px-2 text-base"
+                onClick={() => setMenuOpen(true)}
+              >
+                Menu
+              </Button>
+              <Button
+                type="button"
+                variant="light"
+                data-testid="camera"
+                aria-label="Take a photo and pin it here"
+                className="h-12 w-full min-h-12 px-0"
+                onClick={() => fileRef.current?.click()}
+              >
+                <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="2.4">
+                  <path d="M4 8h3l2-2h6l2 2h3v11H4V8z" />
+                  <circle cx="12" cy="13" r="3.2" />
+                </svg>
+              </Button>
+            </div>
+          ) : null}
+          {!compact || menuOpen ? (
+            <>
+          <div className="flex justify-end">
+            <Button
+              type="button"
+              variant="light"
+              data-testid="compact-toggle"
+              className="min-h-11 px-3 text-sm"
+              onClick={() => {
+                setCompact((current) => {
+                  const next = !current;
+                  localStorage.setItem("boggs.compact", next ? "1" : "0");
+                  if (!next) setMenuOpen(false);
+                  return next;
+                });
+                if (compact) setMenuOpen(false);
+              }}
+            >
+              {compact ? "Bigger buttons" : "Smaller buttons"}
+            </Button>
+          </div>
           <div className="grid grid-cols-[1fr_1fr_4.5rem] gap-2">
             <Button
               type="button"
@@ -751,6 +920,8 @@ export function TrailApp() {
           <p data-testid="offline-status" className="text-center text-sm font-bold text-zinc-700">
             {mapSaved ? "Map saved on this phone" : online ? "Saving the park map for no-signal riding" : "Open this once on wifi before you roll out"}
           </p>
+            </>
+          ) : null}
         </div>
       </div>
 
@@ -787,6 +958,39 @@ export function TrailApp() {
         </div>
       ) : null}
     </main>
+  );
+}
+
+function LocationSteps({ kind }: { kind: DeviceKind }) {
+  if (kind === "ios") {
+    return (
+      <ol data-testid="location-steps" className="mt-3 list-decimal space-y-1 pl-5 text-sm font-bold leading-snug text-zinc-800">
+        <li>Settings, Privacy &amp; Security, Location Services, On.</li>
+        <li>Safari, Websites, Location, While Using.</li>
+        <li>In Safari tap aA, Website Settings, Location, Allow.</li>
+      </ol>
+    );
+  }
+  if (kind === "android") {
+    return (
+      <div data-testid="location-steps" className="mt-3 space-y-2 text-sm font-bold leading-snug text-zinc-800">
+        <ol className="list-decimal space-y-1 pl-5">
+          <li>Tap the lock icon, Permissions, Location, Allow.</li>
+          <li>Settings, Location, On.</li>
+        </ol>
+        <a
+          href="intent:#Intent;action=android.settings.LOCATION_SOURCE_SETTINGS;end"
+          className="inline-flex min-h-11 items-center rounded-2xl border-[3px] border-zinc-950 bg-white px-3 text-sm font-extrabold text-zinc-950"
+        >
+          Open Location settings
+        </a>
+      </div>
+    );
+  }
+  return (
+    <p data-testid="location-steps" className="mt-3 text-sm font-bold leading-snug text-zinc-800">
+      Allow location for this site in the address bar, then tap Turn on location again.
+    </p>
   );
 }
 

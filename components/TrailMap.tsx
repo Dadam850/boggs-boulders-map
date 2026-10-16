@@ -22,6 +22,7 @@ type Props = {
   selfName?: string;
   opacity: number;
   showSheet?: boolean;
+  compact?: boolean;
   command: Command;
   onPhoto: (photo: MapPhoto) => void;
 };
@@ -80,7 +81,7 @@ function lineFor(trail: Crumb[] | undefined, lat: number, lng: number): [number,
   return points;
 }
 
-export function TrailMap({ riders, trails, photos, selfId, selfFix, selfTrail, showCrumbs = true, selfName, opacity, showSheet = false, command, onPhoto }: Props) {
+export function TrailMap({ riders, trails, photos, selfId, selfFix, selfTrail, showCrumbs = true, selfName, opacity, showSheet = false, compact = false, command, onPhoto }: Props) {
   const elRef = useRef<HTMLDivElement>(null);
   const [mapReady, setMapReady] = useState(false);
   const mapRef = useRef<LeafletMap | null>(null);
@@ -89,6 +90,9 @@ export function TrailMap({ riders, trails, photos, selfId, selfFix, selfTrail, s
   const poiLayer = useRef<LayerGroup | null>(null);
   const opacityRef = useRef(opacity);
   opacityRef.current = opacity;
+  const compactRef = useRef(compact);
+  compactRef.current = compact;
+  const userMoved = useRef(false);
   const riderLayer = useRef<LayerGroup | null>(null);
   const photoLayer = useRef<LayerGroup | null>(null);
   const markers = useRef(new globalThis.Map<string, Marker>());
@@ -149,8 +153,11 @@ export function TrailMap({ riders, trails, photos, selfId, selfFix, selfTrail, s
           [view.south, view.west],
           [view.north, view.east],
         ],
-        { paddingTopLeft: [16, 78], paddingBottomRight: [16, 280] },
+        { paddingTopLeft: [16, 78], paddingBottomRight: [16, compactRef.current ? 108 : 280] },
       );
+      map.on("dragstart", () => {
+        userMoved.current = true;
+      });
     })();
 
     const markerMap = markers.current;
@@ -175,6 +182,19 @@ export function TrailMap({ riders, trails, photos, selfId, selfFix, selfTrail, s
     for (const line of parkLines.current) line.setStyle({ opacity });
     sheetRef.current?.setOpacity(opacity);
   }, [opacity, mapReady]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!mapReady || !map || userMoved.current) return;
+    const view = expandBounds(PARK.bounds, 0.04);
+    map.fitBounds(
+      [
+        [view.south, view.west],
+        [view.north, view.east],
+      ],
+      { paddingTopLeft: [16, 78], paddingBottomRight: [16, compact ? 108 : 280], animate: false },
+    );
+  }, [compact, mapReady]);
 
   useEffect(() => {
     if (!mapReady || !mapRef.current) return;
@@ -483,7 +503,7 @@ export function TrailMap({ riders, trails, photos, selfId, selfFix, selfTrail, s
             [b.south, b.west],
             [b.north, b.east],
           ],
-          { paddingTopLeft: [16, 78], paddingBottomRight: [16, 280] },
+          { paddingTopLeft: [16, 78], paddingBottomRight: [16, compact ? 108 : 280] },
         );
         return;
       }
@@ -491,9 +511,9 @@ export function TrailMap({ riders, trails, photos, selfId, selfFix, selfTrail, s
         map.setView(points[0], 16, { animate: true });
         return;
       }
-      map.fitBounds(points, { paddingTopLeft: [24, 86], paddingBottomRight: [24, 280], maxZoom: 17 });
+      map.fitBounds(points, { paddingTopLeft: [24, 86], paddingBottomRight: [24, compact ? 108 : 280], maxZoom: 17 });
     }
-  }, [command, selfFix, selfTrail, showCrumbs, trails, riders, photos, selfId, mapReady]);
+  }, [command, selfFix, selfTrail, showCrumbs, trails, riders, photos, selfId, mapReady, compact]);
 
-  return <div ref={elRef} data-testid="map" className="absolute inset-0 z-0" />;
+  return <div ref={elRef} data-testid="map" className={`absolute inset-0 z-0${compact ? " compact-controls" : ""}`} />;
 }
