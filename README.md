@@ -61,7 +61,7 @@ The west screenshot is locked on the campground pads (about 10 m). The east scre
 python3 scripts/build-onx.py
 ```
 
-The printed sheet is a separate layer, off until you turn **Printed sheet** on. It is the official aerial with the background cleared, north-up, scale bar 322 pixels = 1 km, entrance ring on the sandy gate. That sheet still does not sit on the dirt the way the onX lines do, so it is not the layer to navigate by. `npm run overlay` rebuilds `public/trail-map.png` from `scripts/official-map.jpg`. The slider fades the onX lines.
+The printed sheet is a separate layer, off until you turn **Printed sheet** on. The background is cleared. The thick black main loop is fitted to the tan onX roads: 0.8× the old 1 km scale-bar placement, rotated 1° clockwise, then shifted 120 m east and 120 m north. The rotation is baked into the PNG so the overlay stays north-up. On the black centerline, median distance to the nearest onX road is about 19 m (it was about 64 m). Mean is about 58 m and the 90th percentile is about 167 m, because the printed east bulge and south finger still have no road under them. An extra affine on top of that similarity made the median worse (about 37 m), so it is not used. Ride by the onX lines. `npm run overlay` rebuilds `public/trail-map.png` from `scripts/official-map.jpg` and rewrites only the overlay corners in `lib/park-bounds.json`. The slider fades the onX lines.
 
 ## Azure Blob Storage
 
