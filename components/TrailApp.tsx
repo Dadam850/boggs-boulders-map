@@ -74,6 +74,7 @@ export function TrailApp() {
   const [photos, setPhotos] = useState<MapPhoto[]>([]);
   const [syncNote, setSyncNote] = useState("");
   const [opacity, setOpacity] = useState(1);
+  const [showSheet, setShowSheet] = useState(false);
   const [command, setCommand] = useState<Command | null>(null);
   const [openPhoto, setOpenPhoto] = useState<MapPhoto | null>(null);
   const [tileProgress, setTileProgress] = useState<{ done: number; total: number } | null>(null);
@@ -158,6 +159,7 @@ export function TrailApp() {
         const savedOpacityRaw = localStorage.getItem("boggs.opacity");
         const savedOpacity = savedOpacityRaw === null ? Number.NaN : Number(savedOpacityRaw);
         if (!cancelled && Number.isFinite(savedOpacity)) setOpacity(Math.min(1, Math.max(0, savedOpacity)));
+        if (!cancelled && localStorage.getItem("boggs.sheet") === "1") setShowSheet(true);
         if (!cancelled && localStorage.getItem("boggs.crumbs.show") === "0") setShowCrumbs(false);
         if (!cancelled && localStorage.getItem("boggs.crumbs.record") === "0") setRecordCrumbs(false);
         await rebuildPhotos();
@@ -582,6 +584,7 @@ export function TrailApp() {
         selfTrail={trail}
         showCrumbs={showCrumbs}
         opacity={opacity}
+        showSheet={showSheet}
         command={command}
         onPhoto={setOpenPhoto}
       />
@@ -708,6 +711,24 @@ export function TrailApp() {
               ? "Your path is kept in storage until you clear it."
               : "Recording is paused. The saved path stays put."}
           </p>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-sm font-extrabold uppercase tracking-wide">Printed sheet</span>
+            <Button
+              type="button"
+              variant={showSheet ? "default" : "light"}
+              data-testid="printed-map"
+              className="min-h-12 px-3 text-base"
+              onClick={() => {
+                setShowSheet((current) => {
+                  const next = !current;
+                  localStorage.setItem("boggs.sheet", next ? "1" : "0");
+                  return next;
+                });
+              }}
+            >
+              {showSheet ? "On" : "Off"}
+            </Button>
+          </div>
           <label className="block">
             <span className="mb-1 flex items-center justify-between text-sm font-extrabold uppercase tracking-wide">
               Trail map

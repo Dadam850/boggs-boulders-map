@@ -1,8 +1,9 @@
-const CACHE = "boggs-shell-v8";
+const CACHE = "boggs-shell-v9";
 const PRECACHE = [
   "/",
   "/manifest.webmanifest",
   "/trails.json",
+  "/trails.geojson",
   "/trail-map.png",
   "/icons/icon-192.png",
   "/icons/icon-512.png",
@@ -72,7 +73,7 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
 
-  if (url.pathname.startsWith("/api/tiles/") || url.pathname === "/trail-map.png" || url.pathname === "/trails.json" || url.pathname.startsWith("/icons/")) {
+  if (url.pathname.startsWith("/api/tiles/") || url.pathname === "/trail-map.png" || url.pathname === "/trails.json" || url.pathname === "/trails.geojson" || url.pathname.startsWith("/icons/")) {
     event.respondWith(cacheFirst(req));
     return;
   }

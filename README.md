@@ -46,20 +46,22 @@ If `AZURE_STORAGE_CONNECTION_STRING` and `AZURE_STORAGE_CONTAINER` are unset, ph
 
 The map is Esri World Imagery (`World_Imagery` tile service). If that host cannot be reached, the tile route falls back to Google satellite so the phone still has imagery. The service worker caches whatever tiles the phone actually received.
 
-The red/black overlay is north-up and locked to the real park: **Boggs & Boulders LLC, 20133 Brooklyn Rd, Andalusia, AL 36421**. Google Places puts the pin on the campground building at 31.2429996, -86.750104 (plus code `863M66VX+5X`, place `ChIJ55wAeMjrkYgROmtzkt_88j4`). The road map labels that same point "Boggs & Boulders" on Brooklyn Road (County Road 42). Phone (251) 578-4333, site http://www.boggsandboulders.com/.
+The park is **Boggs & Boulders LLC, 20133 Brooklyn Rd, Andalusia, AL 36421**. Google Places puts the pin on Brooklyn Road at the south side of the campground pads, 31.2429996, -86.750104 (plus code `863M66VX+5X`, place `ChIJ55wAeMjrkYgROmtzkt_88j4`). The road map labels that same point "Boggs & Boulders" on Brooklyn Road (County Road 42). Phone (251) 578-4333, site http://www.boggsandboulders.com/. An earlier box near 31.416, -86.572 is about 15 miles northeast and is not this park.
 
-The sheet's scale bar is 322 pixels and, matched to the satellite, 1 km. The entrance ring at the lower-left end of the black road is the sandy gate, 22 m east of the campground building. From there the printed trails cover the pads, the pit, and the network to the north and east: about 3.5 km by 2.1 km, a bounding box of about 2,000 acres. An earlier box near 31.416, -86.572 is about 15 miles northeast and is not this park.
+The lines you ride by are traced from onX Offroad screenshots that were locked to Google satellite. Blue strokes are trails. Tan strokes are roads. Named places (campground, Cool Pool, the pit, Conex Bridge, and the rest) are labeled pins. The view covers the pads, the sand pit north of Brooklyn Road, and the trail that runs east to about -86.698.
 
 | Corner | Latitude | Longitude |
 | --- | --- | --- |
-| Northwest | 31.257236 | -86.753472 |
-| Southeast | 31.235654 | -86.714915 |
+| Northwest | 31.255800 | -86.751551 |
+| Southeast | 31.232138 | -86.697077 |
 
-The phone draws that sheet as one transparent image, locked to the sheet's own corners (north up), so the red loops stay continuous instead of being cut into short strokes. The aerial photo, scale bar, north arrow, and logo are cleared; only the red trails and the black road remain. The slider fades that image. `scripts/build-overlay.py` rebuilds `public/trail-map.png` and the overlay corners in `lib/park-bounds.json` from `scripts/official-map.jpg`:
+The west screenshot is locked on the campground pads (about 10 m). The east screenshot is locked on the pit pond (typical residual under 15 m). `scripts/build-onx.py` rebuilds `public/trails.geojson` and the view box in `lib/park-bounds.json` from `scripts/onx/west.jpg` and `scripts/onx/east.jpg`:
 
 ```bash
-npm run overlay
+python3 scripts/build-onx.py
 ```
+
+The printed sheet is a separate layer, off until you turn **Printed sheet** on. It is the official aerial with the background cleared, north-up, scale bar 322 pixels = 1 km, entrance ring on the sandy gate. That sheet still does not sit on the dirt the way the onX lines do, so it is not the layer to navigate by. `npm run overlay` rebuilds `public/trail-map.png` from `scripts/official-map.jpg`. The slider fades the onX lines.
 
 ## Azure Blob Storage
 

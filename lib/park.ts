@@ -16,7 +16,7 @@ export const SESSION_MS = 72 * 60 * 60 * 1000;
 export const PARK = {
   name: "Boggs & Boulders",
   place: "Andalusia, Alabama",
-  /** Transparent official sheet. Corners are the image edges, north up. */
+  /** Printed sheet, optional. Corners are the image edges, north up. */
   overlayUrl: "/trail-map.png",
   sheet: bounds.overlay as ParkBounds,
   bounds: {

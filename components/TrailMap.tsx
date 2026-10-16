@@ -21,8 +21,14 @@ type Props = {
   showCrumbs?: boolean;
   selfName?: string;
   opacity: number;
+  showSheet?: boolean;
   command: Command;
   onPhoto: (photo: MapPhoto) => void;
+};
+
+type ParkFeature = {
+  properties?: { kind?: string; name?: string };
+  geometry?: { type?: string; coordinates?: unknown };
 };
 
 function esc(value: string) {
@@ -74,11 +80,15 @@ function lineFor(trail: Crumb[] | undefined, lat: number, lng: number): [number,
   return points;
 }
 
-export function TrailMap({ riders, trails, photos, selfId, selfFix, selfTrail, showCrumbs = true, selfName, opacity, command, onPhoto }: Props) {
+export function TrailMap({ riders, trails, photos, selfId, selfFix, selfTrail, showCrumbs = true, selfName, opacity, showSheet = false, command, onPhoto }: Props) {
   const elRef = useRef<HTMLDivElement>(null);
   const [mapReady, setMapReady] = useState(false);
   const mapRef = useRef<LeafletMap | null>(null);
   const sheetRef = useRef<ImageOverlay | null>(null);
+  const parkLines = useRef<Polyline[]>([]);
+  const poiLayer = useRef<LayerGroup | null>(null);
+  const opacityRef = useRef(opacity);
+  opacityRef.current = opacity;
   const riderLayer = useRef<LayerGroup | null>(null);
   const photoLayer = useRef<LayerGroup | null>(null);
   const markers = useRef(new globalThis.Map<string, Marker>());
@@ -114,28 +124,18 @@ export function TrailMap({ riders, trails, photos, selfId, selfFix, selfTrail, s
         attribution: "Satellite · Esri World Imagery",
       }).addTo(map);
 
+      map.createPane("park-sheet");
+      const sheetPane = map.getPane("park-sheet");
+      if (sheetPane) {
+        sheetPane.style.zIndex = "405";
+        sheetPane.style.pointerEvents = "none";
+      }
       map.createPane("park-trails");
       const trailPane = map.getPane("park-trails");
       if (trailPane) {
         trailPane.style.zIndex = "410";
         trailPane.style.pointerEvents = "none";
       }
-      const sheetBounds = PARK.sheet;
-      const sheet = L.imageOverlay(
-        PARK.overlayUrl,
-        [
-          [sheetBounds.south, sheetBounds.west],
-          [sheetBounds.north, sheetBounds.east],
-        ],
-        {
-          opacity,
-          pane: "park-trails",
-          interactive: false,
-          className: "park-trail",
-        },
-      );
-      sheet.addTo(map);
-      sheetRef.current = sheet;
       map.createPane("crumbs");
       const crumbPane = map.getPane("crumbs");
       if (crumbPane) crumbPane.style.zIndex = "450";
@@ -163,16 +163,125 @@ export function TrailMap({ riders, trails, photos, selfId, selfFix, selfTrail, s
       mapRef.current = null;
       setMapReady(false);
       sheetRef.current = null;
+      parkLines.current = [];
+      poiLayer.current = null;
       riderLayer.current = null;
       photoLayer.current = null;
     };
     // Map is created once. Later effects push data in.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
+    for (const line of parkLines.current) line.setStyle({ opacity });
     sheetRef.current?.setOpacity(opacity);
   }, [opacity, mapReady]);
+
+  useEffect(() => {
+    if (!mapReady || !mapRef.current) return;
+    let alive = true;
+    const map = mapRef.current;
+    (async () => {
+      const L = await import("leaflet");
+      const res = await fetch("/trails.geojson");
+      if (!res.ok || !alive) return;
+      const data = (await res.json()) as { features?: ParkFeature[] };
+      if (!alive) return;
+      const trailsRings: [number, number][][] = [];
+      const roadRings: [number, number][][] = [];
+      const pois = L.layerGroup();
+      for (const feature of data.features ?? []) {
+        const kind = feature.properties?.kind;
+        const geometry = feature.geometry;
+        if (geometry?.type === "LineString" && Array.isArray(geometry.coordinates)) {
+          const ring = (geometry.coordinates as [number, number][])
+            .filter((pair) => Array.isArray(pair) && pair.length >= 2)
+            .map(([lng, lat]) => [lat, lng] as [number, number]);
+          if (ring.length < 2) continue;
+          if (kind === "road") roadRings.push(ring);
+          else if (kind === "trail") trailsRings.push(ring);
+        } else if (kind === "poi" && geometry?.type === "Point" && Array.isArray(geometry.coordinates)) {
+          const [lng, lat] = geometry.coordinates as [number, number];
+          const name = feature.properties?.name ?? "";
+          if (!Number.isFinite(lat) || !Number.isFinite(lng) || !name) continue;
+          L.marker([lat, lng], {
+            icon: L.divIcon({
+              className: "boggs-divicon",
+              html: `<div class="poi-pin"><span class="poi-dot"></span><span class="poi-tag">${esc(name)}</span></div>`,
+              iconSize: [8, 8],
+              iconAnchor: [6, 6],
+            }),
+            interactive: false,
+            keyboard: false,
+            zIndexOffset: 120,
+          }).addTo(pois);
+        }
+      }
+      if (!alive) return;
+      const draw = (rings: [number, number][][], color: string, weight: number) => {
+        if (!rings.length) return;
+        const line = L.polyline(rings, {
+          color,
+          weight,
+          opacity: opacityRef.current,
+          lineCap: "round",
+          lineJoin: "round",
+          pane: "park-trails",
+          interactive: false,
+          className: "park-trail",
+        });
+        line.addTo(map);
+        parkLines.current.push(line);
+      };
+      draw(trailsRings, "#1a1208", 6);
+      draw(roadRings, "#3a2a12", 6.5);
+      draw(trailsRings, "#2f6fe0", 3.2);
+      draw(roadRings, "#e0b15a", 3.6);
+      pois.addTo(map);
+      poiLayer.current = pois;
+    })();
+    return () => {
+      alive = false;
+      for (const line of parkLines.current) line.remove();
+      parkLines.current = [];
+      poiLayer.current?.remove();
+      poiLayer.current = null;
+    };
+    // Drawn once. Opacity is applied by the effect above.
+  }, [mapReady]);
+
+  useEffect(() => {
+    if (!mapReady || !mapRef.current) return;
+    let alive = true;
+    const map = mapRef.current;
+    if (!showSheet) {
+      sheetRef.current?.remove();
+      sheetRef.current = null;
+      return;
+    }
+    (async () => {
+      const L = await import("leaflet");
+      if (!alive || sheetRef.current) return;
+      const sheetBounds = PARK.sheet;
+      const sheet = L.imageOverlay(
+        PARK.overlayUrl,
+        [
+          [sheetBounds.south, sheetBounds.west],
+          [sheetBounds.north, sheetBounds.east],
+        ],
+        {
+          opacity,
+          pane: "park-sheet",
+          interactive: false,
+          className: "park-trail",
+        },
+      );
+      sheet.addTo(map);
+      sheetRef.current = sheet;
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [showSheet, mapReady, opacity]);
 
   useEffect(() => {
     let alive = true;
