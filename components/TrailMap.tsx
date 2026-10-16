@@ -95,14 +95,15 @@ export function TrailMap({ riders, trails, photos, selfId, selfFix, selfTrail, s
     (async () => {
       const L = await import("leaflet");
       if (!alive || !host) return;
+      const fence = expandBounds(PARK.bounds, 1.25);
       map = L.map(host, {
         zoomControl: false,
         attributionControl: true,
         maxZoom: 19,
-        minZoom: 12,
+        minZoom: 13,
         maxBounds: [
-          [30.95, -87.05],
-          [31.65, -86.05],
+          [fence.south, fence.west],
+          [fence.north, fence.east],
         ],
         maxBoundsViscosity: 0.85,
       });

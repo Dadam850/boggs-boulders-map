@@ -46,20 +46,20 @@ If `AZURE_STORAGE_CONNECTION_STRING` and `AZURE_STORAGE_CONTAINER` are unset, ph
 
 The map is Esri World Imagery (`World_Imagery` tile service). If that host cannot be reached, the tile route falls back to Google satellite so the phone still has imagery. The service worker caches whatever tiles the phone actually received.
 
-The red/black overlay is north-up and locked to this box, which is the dense trail network northwest of Andalusia. Corners are the Web Mercator tile edges the image was built from, so the lines sit on the dirt tracks and clearings:
+The red/black overlay is north-up and locked to the real park: **Boggs & Boulders LLC, 20133 Brooklyn Rd, Andalusia, AL 36421**. Google Places puts the pin on the campground building at 31.2429996, -86.750104 (plus code `863M66VX+5X`, place `ChIJ55wAeMjrkYgROmtzkt_88j4`). The road map labels that same point "Boggs & Boulders" on Brooklyn Road (County Road 42). Phone (251) 578-4333, site http://www.boggsandboulders.com/.
+
+An earlier box near 31.416, -86.572 is about 15 miles northeast. That is a different network of woods roads, not this park. The riding ground is the sand at the Brooklyn Road entrance: camp pads, the berm bowl, two ponds, and the dirt tracks that run north from the gate.
 
 | Corner | Latitude | Longitude |
 | --- | --- | --- |
-| Northwest | 31.428663 | -86.591492 |
-| Southeast | 31.402880 | -86.553040 |
+| Northwest | 31.251774 | -86.751399 |
+| Southeast | 31.241622 | -86.744460 |
 
-Little trails are a thin red line, the same ink as the park map. The main road is a thin black line. There is no white halo. The strokes are screen pixels, so they stay readable when you zoom out, and the slider fades them. The tracer only joins a break of about 20 meters, so a line follows the dirt instead of cutting a straight chord across the woods. Rebuild after editing the seed box in `lib/park-bounds.json`:
+Little trails are a thin red line, the same ink as the park map. The main sandy road is a thin black line (two pieces, with trees between them). There is no white halo. The strokes are screen pixels, so they stay readable when you zoom out, and the slider fades them. The lines were digitized on the satellite so they sit on the sand, including the berm-bowl rim. `scripts/build-overlay.py` rebuilds `public/trails.json`, `public/trail-map.png`, and `lib/park-bounds.json` from those control points:
 
 ```bash
 npm run overlay
 ```
-
-`scripts/build-overlay.py` downloads satellite tiles for that box, traces the tracks, and rewrites `lib/park-bounds.json` to the exact tile corners.
 
 ## Azure Blob Storage
 

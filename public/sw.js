@@ -1,4 +1,4 @@
-const CACHE = "boggs-shell-v5";
+const CACHE = "boggs-shell-v6";
 const PRECACHE = [
   "/",
   "/manifest.webmanifest",

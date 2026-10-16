@@ -58,9 +58,9 @@ async function main() {
   await adam.setViewport({ width: 390, height: 844, deviceScaleFactor: 2, isMobile: true });
   await jordan.setViewport({ width: 390, height: 844, deviceScaleFactor: 2, isMobile: true });
 
-  const start = { latitude: 31.416, longitude: -86.572 };
+  const start = { latitude: 31.242341, longitude: -86.750558 };
   await adam.setGeolocation({ ...start, accuracy: 6 });
-  await jordan.setGeolocation({ latitude: 31.412, longitude: -86.565, accuracy: 6 });
+  await jordan.setGeolocation({ latitude: 31.246219, longitude: -86.748141, accuracy: 6 });
   await adam.goto(BASE, { waitUntil: "domcontentloaded" });
   await jordan.goto(BASE, { waitUntil: "domcontentloaded" });
   const groupCode = `c${Date.now().toString().slice(-8)}`;
@@ -82,11 +82,11 @@ async function main() {
   await jordan.waitForFunction(() => document.body.innerText.includes("Adam"), { timeout: 25000 });
 
   const steps = [
-    { latitude: 31.4164, longitude: -86.5714 },
-    { latitude: 31.4169, longitude: -86.5706 },
-    { latitude: 31.4175, longitude: -86.5698 },
-    { latitude: 31.4181, longitude: -86.569 },
-    { latitude: 31.4186, longitude: -86.5682 },
+    { latitude: 31.242835, longitude: -86.750486 },
+    { latitude: 31.243329, longitude: -86.750414 },
+    { latitude: 31.243823, longitude: -86.750342 },
+    { latitude: 31.244317, longitude: -86.750271 },
+    { latitude: 31.244811, longitude: -86.750199 },
   ];
   for (const step of steps) {
     await adam.setGeolocation({ ...step, accuracy: 6 });
@@ -122,7 +122,7 @@ async function main() {
       lat: adamRider.lat,
       lng: adamRider.lng,
       record: false,
-      trail: [...adamTrail.crumbs, { lat: 31.405, lng: -86.58, at: oldAt }],
+      trail: [...adamTrail.crumbs, { lat: 31.249, lng: -86.749, at: oldAt }],
     }),
   }).then((res) => res.json());
   const kept = (keep.trails ?? []).find((item) => item.userId === adamRider.userId);
@@ -136,8 +136,8 @@ async function main() {
       userId: adamRider.userId,
       name: "Adam",
       group: groupCode,
-      lat: 31.42,
-      lng: -86.56,
+      lat: 31.247,
+      lng: -86.748,
       record: false,
       trail: kept.crumbs,
     }),
