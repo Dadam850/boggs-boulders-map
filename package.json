@@ -1,0 +1,41 @@
+{
+  "name": "boggs-boulders",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "next dev --turbopack -p 41773",
+    "build": "next build",
+    "start": "next start -H 0.0.0.0 -p ${PORT:-41773}",
+    "lint": "eslint",
+    "blob": "azurite --silent --location ./data/azurite --blobPort 10000 --queuePort 10001 --tablePort 10002 --skipApiVersionCheck",
+    "overlay": "python3 scripts/build-overlay.py"
+  },
+  "dependencies": {
+    "@azure/storage-blob": "^12.34.0",
+    "@radix-ui/react-slot": "^1.5.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "leaflet": "^1.9.4",
+    "next": "15.5.28",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "tailwind-merge": "^3.7.0"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3",
+    "@tailwindcss/postcss": "^4",
+    "@types/leaflet": "^1.9.22",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "azurite": "^3.37.0",
+    "eslint": "^9",
+    "eslint-config-next": "15.5.28",
+    "puppeteer-core": "^25.14.0",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}
