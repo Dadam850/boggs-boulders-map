@@ -126,6 +126,10 @@ body {
   transform: translate(2px, -50%);
 }
 
+.poi-pin.stacked {
+  transform: translate(2px, 8px);
+}
+
 .poi-dot {
   width: 12px;
   height: 12px;

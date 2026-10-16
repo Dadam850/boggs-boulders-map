@@ -209,6 +209,7 @@ export function TrailMap({ riders, trails, photos, selfId, selfFix, selfTrail, s
       const trailsRings: [number, number][][] = [];
       const roadRings: [number, number][][] = [];
       const pois = L.layerGroup();
+      const placed = new Set<string>();
       for (const feature of data.features ?? []) {
         const kind = feature.properties?.kind;
         const geometry = feature.geometry;
@@ -223,10 +224,13 @@ export function TrailMap({ riders, trails, photos, selfId, selfFix, selfTrail, s
           const [lng, lat] = geometry.coordinates as [number, number];
           const name = feature.properties?.name ?? "";
           if (!Number.isFinite(lat) || !Number.isFinite(lng) || !name) continue;
+          const key = `${lat.toFixed(5)},${lng.toFixed(5)}`;
+          const stacked = placed.has(key);
+          placed.add(key);
           L.marker([lat, lng], {
             icon: L.divIcon({
               className: "boggs-divicon",
-              html: `<div class="poi-pin"><span class="poi-dot"></span><span class="poi-tag">${esc(name)}</span></div>`,
+              html: `<div class="poi-pin${stacked ? " stacked" : ""}"><span class="poi-dot"></span><span class="poi-tag">${esc(name)}</span></div>`,
               iconSize: [8, 8],
               iconAnchor: [6, 6],
             }),

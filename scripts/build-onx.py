@@ -373,24 +373,33 @@ def main():
     raw["west"] = min(lngs) - pad_lng
     raw["east"] = max(lngs) + pad_lng
     BOUNDS_PATH.write_text(json.dumps(raw, indent=2) + "\n")
-    # Named places. Campground and Redneck Waterfall are the icon tips measured
-    # on the west screenshot. The others sit on the clearings and ponds those
-    # names mark in the onX screenshots. Pier and Cave #1 share one pin there,
-    # and so do Conex Bridge and the cattle-gate crossing.
-    pois = [
-        ("Campground/Cabins", 31.24637, -86.74767),
-        ("Cool Pool", 31.24800, -86.74800),
-        ("Callaway shed", 31.25200, -86.74300),
-        ("WTF Bounty Course", 31.25300, -86.73900),
-        ("Redneck Waterfall", 31.25269, -86.73386),
-        ("Mounds", 31.25000, -86.72800),
-        ("New Cool Pool", 31.24630, -86.72840),
-        ("Pond", 31.24100, -86.73000),
-        ("Pier", 31.25020, -86.72100),
-        ("Cave #1", 31.25055, -86.72070),
-        ("Conex Bridge", 31.24020, -86.71720),
-        ("Cattle Gate crossing", 31.23980, -86.71680),
+    # Pin tips on the onX screenshots, in pixels. Pier and Cave #1 are one pin.
+    # Redneck Waterfall's tip runs off the right edge of the west shot, so that
+    # one stays on the last pixel that is still in the frame.
+    west_px = west.shape
+    east_px = east.shape
+    tips = [
+        ("Campground/Cabins", "west", 345, 959),
+        ("Cool Pool", "west", 306, 784),
+        ("Callaway shed", "west", 657, 492),
+        ("WTF Bounty Course", "west", 937, 463),
+        ("Redneck Waterfall", "west", 1319, 413),
+        ("Mounds", "east", 259, 430),
+        ("New Cool Pool", "east", 244, 484),
+        ("Pond", "east", 180, 737),
+        ("Pier", "east", 481, 366),
+        ("Cave #1", "east", 481, 366),
+        ("Conex Bridge", "east", 626, 789),
+        ("Cattle Gate crossing", "east", 616, 816),
     ]
+    pois = []
+    for name, side, x, y in tips:
+        if side == "west":
+            lat, lng = ll_of_rect(x, y, west_px[1], west_px[0], WEST_N, WEST_W, WEST_S, WEST_E)
+        else:
+            lat, lng = ll_of_rect(x, y, east_px[1], east_px[0], EAST_N, EAST_W, EAST_S, EAST_E)
+        pois.append((name, lat, lng))
+        print("poi", name, round(lat, 6), round(lng, 6))
     for name, lat, lng in pois:
         features.append(
             {
