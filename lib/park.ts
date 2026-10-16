@@ -16,8 +16,15 @@ export const SESSION_MS = 72 * 60 * 60 * 1000;
 export const PARK = {
   name: "Boggs & Boulders",
   place: "Andalusia, Alabama",
-  overlayUrl: "/trails.json",
-  bounds: bounds as ParkBounds,
+  /** Transparent official sheet. Corners are the image edges, north up. */
+  overlayUrl: "/trail-map.png",
+  sheet: bounds.overlay as ParkBounds,
+  bounds: {
+    north: bounds.north,
+    south: bounds.south,
+    east: bounds.east,
+    west: bounds.west,
+  } as ParkBounds,
   /** Satellite zooms cached for the whole property. 17 is about 1 m/pixel here. */
   prefetchZooms: [13, 14, 15, 16, 17],
   prefetchPad: 0.08,

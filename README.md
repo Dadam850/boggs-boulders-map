@@ -55,7 +55,7 @@ The sheet's scale bar is 322 pixels and, matched to the satellite, 1 km. The ent
 | Northwest | 31.257236 | -86.753472 |
 | Southeast | 31.235654 | -86.714915 |
 
-Every red trail and the black main road are traced off that sheet and locked to those corners, north up. Little trails are a thin red line. The main road is a thin black line. There is no white halo. The strokes are screen pixels, so they stay readable when you zoom out, and the slider fades them. `scripts/build-overlay.py` rebuilds `public/trails.json`, `public/trail-map.png`, and `lib/park-bounds.json` from `scripts/official-map.jpg`:
+The phone draws that sheet as one transparent image, locked to the sheet's own corners (north up), so the red loops stay continuous instead of being cut into short strokes. The aerial photo, scale bar, north arrow, and logo are cleared; only the red trails and the black road remain. The slider fades that image. `scripts/build-overlay.py` rebuilds `public/trail-map.png` and the overlay corners in `lib/park-bounds.json` from `scripts/official-map.jpg`:
 
 ```bash
 npm run overlay

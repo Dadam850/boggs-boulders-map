@@ -32,6 +32,11 @@ body {
   font-family: inherit;
 }
 
+.leaflet-image-layer.park-trail {
+  max-width: none;
+  max-height: none;
+}
+
 .leaflet-top.leaflet-right {
   top: 4.6rem;
 }

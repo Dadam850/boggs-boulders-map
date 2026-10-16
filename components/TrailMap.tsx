@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import "leaflet/dist/leaflet.css";
-import type { LayerGroup, Map as LeafletMap, Marker, Polyline } from "leaflet";
+import type { ImageOverlay, LayerGroup, Map as LeafletMap, Marker, Polyline } from "leaflet";
 import { PARK, expandBounds } from "@/lib/park";
 import type { Crumb } from "@/lib/trail";
 import type { PhotoMeta, Rider, StoredTrail } from "@/lib/types";
@@ -78,7 +78,7 @@ export function TrailMap({ riders, trails, photos, selfId, selfFix, selfTrail, s
   const elRef = useRef<HTMLDivElement>(null);
   const [mapReady, setMapReady] = useState(false);
   const mapRef = useRef<LeafletMap | null>(null);
-  const parkLines = useRef<Polyline[]>([]);
+  const sheetRef = useRef<ImageOverlay | null>(null);
   const riderLayer = useRef<LayerGroup | null>(null);
   const photoLayer = useRef<LayerGroup | null>(null);
   const markers = useRef(new globalThis.Map<string, Marker>());
@@ -120,37 +120,22 @@ export function TrailMap({ riders, trails, photos, selfId, selfFix, selfTrail, s
         trailPane.style.zIndex = "410";
         trailPane.style.pointerEvents = "none";
       }
-      try {
-        const res = await fetch("/trails.json");
-        const data = (await res.json()) as { lines?: { road?: boolean; path?: [number, number][] }[] };
-        const little: [number, number][][] = [];
-        const roads: [number, number][][] = [];
-        for (const line of data.lines ?? []) {
-          if (!line.path || line.path.length < 2) continue;
-          (line.road ? roads : little).push(line.path);
-        }
-        const add = (parts: [number, number][][], color: string, weight: number) => {
-          if (!parts.length || !map) return;
-          const drawn = L.polyline(parts, {
-            color,
-            weight,
-            opacity,
-            pane: "park-trails",
-            interactive: false,
-            lineCap: "round",
-            lineJoin: "round",
-            className: "park-trail",
-          });
-          drawn.addTo(map);
-          parkLines.current.push(drawn);
-        };
-        // Thin red for the little trails, thin black for the main road — the park
-        // map's ink, drawn in screen pixels so it stays readable when you zoom out.
-        add(little, "#e10600", 2.5);
-        add(roads, "#111111", 4);
-      } catch {
-        /* the satellite map still works if the trail file is missing */
-      }
+      const sheetBounds = PARK.sheet;
+      const sheet = L.imageOverlay(
+        PARK.overlayUrl,
+        [
+          [sheetBounds.south, sheetBounds.west],
+          [sheetBounds.north, sheetBounds.east],
+        ],
+        {
+          opacity,
+          pane: "park-trails",
+          interactive: false,
+          className: "park-trail",
+        },
+      );
+      sheet.addTo(map);
+      sheetRef.current = sheet;
       map.createPane("crumbs");
       const crumbPane = map.getPane("crumbs");
       if (crumbPane) crumbPane.style.zIndex = "450";
@@ -177,7 +162,7 @@ export function TrailMap({ riders, trails, photos, selfId, selfFix, selfTrail, s
       map?.remove();
       mapRef.current = null;
       setMapReady(false);
-      parkLines.current = [];
+      sheetRef.current = null;
       riderLayer.current = null;
       photoLayer.current = null;
     };
@@ -186,7 +171,7 @@ export function TrailMap({ riders, trails, photos, selfId, selfFix, selfTrail, s
   }, []);
 
   useEffect(() => {
-    for (const line of parkLines.current) line.setStyle({ opacity });
+    sheetRef.current?.setOpacity(opacity);
   }, [opacity, mapReady]);
 
   useEffect(() => {
