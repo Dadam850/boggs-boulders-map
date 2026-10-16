@@ -48,14 +48,14 @@ The map is Esri World Imagery (`World_Imagery` tile service). If that host canno
 
 The red/black overlay is north-up and locked to the real park: **Boggs & Boulders LLC, 20133 Brooklyn Rd, Andalusia, AL 36421**. Google Places puts the pin on the campground building at 31.2429996, -86.750104 (plus code `863M66VX+5X`, place `ChIJ55wAeMjrkYgROmtzkt_88j4`). The road map labels that same point "Boggs & Boulders" on Brooklyn Road (County Road 42). Phone (251) 578-4333, site http://www.boggsandboulders.com/.
 
-An earlier box near 31.416, -86.572 is about 15 miles northeast. That is a different network of woods roads, not this park. The riding ground is the sand at the Brooklyn Road entrance: camp pads, the berm bowl, two ponds, and the dirt tracks that run north from the gate.
+The sheet's scale bar is 322 pixels and, matched to the satellite, 1 km. The entrance ring at the lower-left end of the black road is the sandy gate, 22 m east of the campground building. From there the printed trails cover the pads, the pit, and the network to the north and east: about 3.5 km by 2.1 km, a bounding box of about 2,000 acres. An earlier box near 31.416, -86.572 is about 15 miles northeast and is not this park.
 
 | Corner | Latitude | Longitude |
 | --- | --- | --- |
-| Northwest | 31.251774 | -86.751399 |
-| Southeast | 31.241622 | -86.744460 |
+| Northwest | 31.257236 | -86.753472 |
+| Southeast | 31.235654 | -86.714915 |
 
-Little trails are a thin red line, the same ink as the park map. The main sandy road is a thin black line (two pieces, with trees between them). There is no white halo. The strokes are screen pixels, so they stay readable when you zoom out, and the slider fades them. The lines were digitized on the satellite so they sit on the sand, including the berm-bowl rim. `scripts/build-overlay.py` rebuilds `public/trails.json`, `public/trail-map.png`, and `lib/park-bounds.json` from those control points:
+Every red trail and the black main road are traced off that sheet and locked to those corners, north up. Little trails are a thin red line. The main road is a thin black line. There is no white halo. The strokes are screen pixels, so they stay readable when you zoom out, and the slider fades them. `scripts/build-overlay.py` rebuilds `public/trails.json`, `public/trail-map.png`, and `lib/park-bounds.json` from `scripts/official-map.jpg`:
 
 ```bash
 npm run overlay
@@ -128,7 +128,7 @@ Redeploy if the first boot happened before those variables existed. Open `/api/h
 6. If `brocksautos.com` DNS is on Cloudflare, set the CNAME to **DNS only** (grey cloud). An orange-cloud proxy stops Railway from issuing the certificate.
 7. On each phone, open `https://map.brocksautos.com` on wifi, let the status line say the map is saved, then Add to Home Screen. GPS and the install prompt need the `https://` URL.
 
-Tiles are cached on each phone by the service worker, not in Azure. The first online visit at the park (or at home, before you drive out) is what fills that cache. Zooms 14–17 cover the trail box with a little padding.
+Tiles are cached on each phone by the service worker, not in Azure. The first online visit at the park (or at home, before you drive out) is what fills that cache. Zooms 13–17 cover the whole property with a little padding.
 
 ## Offline check
 

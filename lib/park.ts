@@ -18,8 +18,8 @@ export const PARK = {
   place: "Andalusia, Alabama",
   overlayUrl: "/trails.json",
   bounds: bounds as ParkBounds,
-  /** Satellite zooms cached for the park. 17 is about 2 m/pixel here. */
-  prefetchZooms: [14, 15, 16, 17],
+  /** Satellite zooms cached for the whole property. 17 is about 1 m/pixel here. */
+  prefetchZooms: [13, 14, 15, 16, 17],
   prefetchPad: 0.08,
 };
 

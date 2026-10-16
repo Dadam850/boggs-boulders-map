@@ -33,7 +33,7 @@ export function offlineTiles(): Tile[] {
   const area = expandBounds(PARK.bounds, PARK.prefetchPad);
   let zooms = [...PARK.prefetchZooms];
   let tiles = tilesCovering(area, zooms);
-  while (tiles.length > 700 && zooms.length > 2) {
+  while (tiles.length > 2200 && zooms.length > 2) {
     zooms = zooms.slice(0, -1);
     tiles = tilesCovering(area, zooms);
   }

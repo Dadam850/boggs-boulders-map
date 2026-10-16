@@ -58,9 +58,9 @@ async function main() {
   await adam.setViewport({ width: 390, height: 844, deviceScaleFactor: 2, isMobile: true });
   await jordan.setViewport({ width: 390, height: 844, deviceScaleFactor: 2, isMobile: true });
 
-  const start = { latitude: 31.242341, longitude: -86.750558 };
+  const start = { latitude: 31.243, longitude: -86.749873 };
   await adam.setGeolocation({ ...start, accuracy: 6 });
-  await jordan.setGeolocation({ latitude: 31.246219, longitude: -86.748141, accuracy: 6 });
+  await jordan.setGeolocation({ latitude: 31.2485, longitude: -86.738, accuracy: 6 });
   await adam.goto(BASE, { waitUntil: "domcontentloaded" });
   await jordan.goto(BASE, { waitUntil: "domcontentloaded" });
   const groupCode = `c${Date.now().toString().slice(-8)}`;
@@ -82,11 +82,11 @@ async function main() {
   await jordan.waitForFunction(() => document.body.innerText.includes("Adam"), { timeout: 25000 });
 
   const steps = [
-    { latitude: 31.242835, longitude: -86.750486 },
-    { latitude: 31.243329, longitude: -86.750414 },
-    { latitude: 31.243823, longitude: -86.750342 },
-    { latitude: 31.244317, longitude: -86.750271 },
-    { latitude: 31.244811, longitude: -86.750199 },
+    { latitude: 31.24345, longitude: -86.74955 },
+    { latitude: 31.2439, longitude: -86.74922 },
+    { latitude: 31.24435, longitude: -86.7489 },
+    { latitude: 31.2448, longitude: -86.74857 },
+    { latitude: 31.24525, longitude: -86.74824 },
   ];
   for (const step of steps) {
     await adam.setGeolocation({ ...step, accuracy: 6 });
@@ -122,7 +122,7 @@ async function main() {
       lat: adamRider.lat,
       lng: adamRider.lng,
       record: false,
-      trail: [...adamTrail.crumbs, { lat: 31.249, lng: -86.749, at: oldAt }],
+      trail: [...adamTrail.crumbs, { lat: 31.25, lng: -86.74, at: oldAt }],
     }),
   }).then((res) => res.json());
   const kept = (keep.trails ?? []).find((item) => item.userId === adamRider.userId);
@@ -136,8 +136,8 @@ async function main() {
       userId: adamRider.userId,
       name: "Adam",
       group: groupCode,
-      lat: 31.247,
-      lng: -86.748,
+      lat: 31.246,
+      lng: -86.745,
       record: false,
       trail: kept.crumbs,
     }),

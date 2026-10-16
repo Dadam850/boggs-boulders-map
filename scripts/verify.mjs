@@ -61,8 +61,8 @@ async function main() {
 
   await adam.setViewport({ width: 390, height: 844, deviceScaleFactor: 2, isMobile: true });
   await jordan.setViewport({ width: 390, height: 844, deviceScaleFactor: 2, isMobile: true });
-  await adam.setGeolocation({ latitude: 31.242341, longitude: -86.750558, accuracy: 6 });
-  await jordan.setGeolocation({ latitude: 31.246219, longitude: -86.748141, accuracy: 6 });
+  await adam.setGeolocation({ latitude: 31.243, longitude: -86.749873, accuracy: 6 });
+  await jordan.setGeolocation({ latitude: 31.2485, longitude: -86.738, accuracy: 6 });
 
   await adam.goto(BASE, { waitUntil: "domcontentloaded" });
   await jordan.goto(BASE, { waitUntil: "domcontentloaded" });
