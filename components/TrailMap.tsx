@@ -188,8 +188,16 @@ export function TrailMap({ riders, trails, photos, selfId, selfFix, selfTrail, s
   }, [opacity, mapReady]);
 
   useEffect(() => {
+    // Toggle via classList so React never rewrites the host className and
+    // wipes Leaflet's leaflet-container / touch / grab classes (blank map).
+    elRef.current?.classList.toggle("compact-controls", compact);
+  }, [compact]);
+
+  useEffect(() => {
     const map = mapRef.current;
-    if (!mapReady || !map || userMoved.current) return;
+    if (!mapReady || !map) return;
+    map.invalidateSize({ animate: false });
+    if (userMoved.current) return;
     const view = expandBounds(PARK.bounds, 0.04);
     map.fitBounds(
       [
@@ -535,5 +543,5 @@ export function TrailMap({ riders, trails, photos, selfId, selfFix, selfTrail, s
     }
   }, [command, selfFix, selfTrail, showCrumbs, trails, riders, photos, selfId, mapReady, compact]);
 
-  return <div ref={elRef} data-testid="map" className={`absolute inset-0 z-0${compact ? " compact-controls" : ""}`} />;
+  return <div ref={elRef} data-testid="map" className="absolute inset-0 z-0" />;
 }
