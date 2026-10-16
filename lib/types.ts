@@ -4,6 +4,8 @@ export type Rider = {
   userId: string;
   name: string;
   group: string;
+  /** Buggy, ATV, or whatever they typed at login. */
+  vehicle?: string;
   lat: number;
   lng: number;
   updatedAt: number;

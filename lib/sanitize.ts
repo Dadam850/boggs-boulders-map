@@ -15,6 +15,15 @@ export function safeId(input: unknown) {
   return s;
 }
 
+export function safeRide(input: unknown) {
+  const raw = typeof input === "string" ? input : "";
+  return raw
+    .replace(/[\u0000-\u001f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 32);
+}
+
 export function safeName(input: unknown) {
   const raw = typeof input === "string" ? input : "";
   return raw

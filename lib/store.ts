@@ -39,6 +39,7 @@ function trailKey(group: string, userId: string) {
 type LegacyRider = Rider & { trail?: Crumb[] };
 
 function cleanRider(rider: LegacyRider): Rider {
+  const vehicle = typeof rider.vehicle === "string" ? rider.vehicle.trim().slice(0, 32) : "";
   return {
     userId: rider.userId,
     name: rider.name,
@@ -46,6 +47,7 @@ function cleanRider(rider: LegacyRider): Rider {
     lat: rider.lat,
     lng: rider.lng,
     updatedAt: rider.updatedAt,
+    ...(vehicle ? { vehicle } : {}),
   };
 }
 

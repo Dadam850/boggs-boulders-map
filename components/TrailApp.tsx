@@ -18,7 +18,7 @@ import {
 } from "@/lib/db";
 import { clearSession, loadSession, saveSession, type Session } from "@/lib/session";
 import { offlineTiles } from "@/lib/tiles";
-import { safeGroup, safeName } from "@/lib/sanitize";
+import { safeGroup, safeName, safeRide } from "@/lib/sanitize";
 import { appendCrumb, thinCrumbs, type Crumb } from "@/lib/trail";
 import type { PhotoMeta, Rider, StoredTrail } from "@/lib/types";
 
@@ -81,6 +81,7 @@ export function TrailApp() {
   const [ready, setReady] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
   const [name, setName] = useState("");
+  const [vehicle, setVehicle] = useState("");
   const [group, setGroup] = useState("boggs");
   const [loginError, setLoginError] = useState("");
   const [storageError, setStorageError] = useState("");
@@ -95,6 +96,8 @@ export function TrailApp() {
   const [riders, setRiders] = useState<Rider[]>([]);
   const [trails, setTrails] = useState<StoredTrail[]>([]);
   const [showCrumbs, setShowCrumbs] = useState(true);
+  const [showPhotos, setShowPhotos] = useState(true);
+  const [profile, setProfile] = useState<{ name: string; vehicle: string; detail: string } | null>(null);
   const [recordCrumbs, setRecordCrumbs] = useState(true);
   const [confirmClear, setConfirmClear] = useState(false);
   const [photos, setPhotos] = useState<MapPhoto[]>([]);
@@ -188,6 +191,7 @@ export function TrailApp() {
         if (!cancelled && Number.isFinite(savedOpacity)) setOpacity(Math.min(1, Math.max(0, savedOpacity)));
         if (!cancelled && localStorage.getItem("boggs.sheet") === "1") setShowSheet(true);
         if (!cancelled && localStorage.getItem("boggs.crumbs.show") === "0") setShowCrumbs(false);
+        if (!cancelled && localStorage.getItem("boggs.photos") === "0") setShowPhotos(false);
         if (!cancelled && localStorage.getItem("boggs.crumbs.record") === "0") setRecordCrumbs(false);
         if (!cancelled && localStorage.getItem("boggs.compact") === "1") setCompact(true);
         if (!cancelled) setDeviceKind(detectDevice());
@@ -392,6 +396,7 @@ export function TrailApp() {
           body: JSON.stringify({
             userId: current.userId,
             name: current.name,
+            vehicle: current.vehicle || "",
             group: current.group,
             lat: here.lat,
             lng: here.lng,
@@ -529,6 +534,7 @@ export function TrailApp() {
       name: clean,
       userId: crypto.randomUUID(),
       group: safeGroup(group),
+      vehicle: safeRide(vehicle),
     });
     setSession(next);
     setLoginError("");
@@ -623,6 +629,32 @@ export function TrailApp() {
               className="h-16 w-full rounded-2xl border-[3px] border-zinc-950 bg-white px-4 text-2xl font-bold outline-none focus:ring-4 focus:ring-orange-400"
               placeholder="Adam"
             />
+            <label className="block text-lg font-extrabold" htmlFor="rider-ride">
+              Ride
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              {["Buggy", "ATV", "UTV"].map((ride) => (
+                <button
+                  key={ride}
+                  type="button"
+                  data-testid={`ride-${ride.toLowerCase()}`}
+                  className={`min-h-14 rounded-2xl border-[3px] border-zinc-950 text-lg font-extrabold ${vehicle === ride ? "bg-orange-600 text-white" : "bg-white"}`}
+                  onClick={() => setVehicle(ride)}
+                >
+                  {ride}
+                </button>
+              ))}
+            </div>
+            <input
+              id="rider-ride"
+              data-testid="rider-ride"
+              value={vehicle}
+              onChange={(event) => setVehicle(event.target.value)}
+              autoCapitalize="words"
+              maxLength={32}
+              className="h-16 w-full rounded-2xl border-[3px] border-zinc-950 bg-white px-4 text-2xl font-bold outline-none focus:ring-4 focus:ring-orange-400"
+              placeholder="Or type it"
+            />
             <label className="block text-lg font-extrabold" htmlFor="group-code">
               Group code
             </label>
@@ -675,11 +707,29 @@ export function TrailApp() {
         selfFix={fix}
         selfTrail={trail}
         showCrumbs={showCrumbs}
+        showPhotos={showPhotos}
         opacity={opacity}
         showSheet={showSheet}
         compact={compact}
         command={command}
         onPhoto={setOpenPhoto}
+        onRider={(userId) => {
+          if (userId === session.userId) {
+            setProfile({
+              name: session.name,
+              vehicle: session.vehicle || "",
+              detail: "You",
+            });
+            return;
+          }
+          const rider = riders.find((item) => item.userId === userId);
+          if (!rider) return;
+          setProfile({
+            name: rider.name,
+            vehicle: rider.vehicle || "",
+            detail: `Last seen ${ageLabel(rider.updatedAt)}`,
+          });
+        }}
       />
 
       <header className="pointer-events-none absolute inset-x-0 top-0 z-[2000] flex items-start justify-between gap-2 p-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
@@ -880,8 +930,24 @@ export function TrailApp() {
               ? "Your path is kept in storage until you clear it."
               : "Recording is paused. The saved path stays put."}
           </p>
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-sm font-extrabold uppercase tracking-wide">Printed sheet</span>
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              type="button"
+              variant={showPhotos ? "default" : "light"}
+              data-testid="photos-show"
+              className="min-h-12 px-2 text-base"
+              onClick={() => {
+                setShowPhotos((current) => {
+                  const next = !current;
+                  localStorage.setItem("boggs.photos", next ? "1" : "0");
+                  return next;
+                });
+              }}
+            >
+              {showPhotos ? "Photos on" : "Photos off"}
+            </Button>
+            <div className="flex items-center justify-between gap-2 rounded-2xl border-[3px] border-zinc-950 bg-white px-3">
+            <span className="text-sm font-extrabold uppercase tracking-wide">Sheet</span>
             <Button
               type="button"
               variant={showSheet ? "default" : "light"}
@@ -897,6 +963,7 @@ export function TrailApp() {
             >
               {showSheet ? "On" : "Off"}
             </Button>
+            </div>
           </div>
           <label className="block">
             <span className="mb-1 flex items-center justify-between text-sm font-extrabold uppercase tracking-wide">
@@ -934,6 +1001,19 @@ export function TrailApp() {
         capture="environment"
         onChange={onFile}
       />
+
+      {profile ? (
+        <div className="pointer-events-none absolute inset-x-3 bottom-28 z-[2500]" data-testid="rider-profile">
+          <div className="pointer-events-auto mx-auto max-w-lg rounded-3xl border-[3px] border-zinc-950 bg-white p-4 shadow-[4px_4px_0_#111]">
+            <p className="text-3xl font-black leading-none">{profile.name}</p>
+            <p className="mt-2 text-xl font-extrabold text-orange-700">{profile.vehicle || "No ride set"}</p>
+            <p className="mt-1 text-base font-bold text-zinc-700">{profile.detail}</p>
+            <Button type="button" variant="dark" className="mt-3 w-full" onClick={() => setProfile(null)}>
+              Close
+            </Button>
+          </div>
+        </div>
+      ) : null}
 
       {openPhoto ? (
         <div className="absolute inset-0 z-[3000] flex flex-col bg-zinc-950/80 p-3 pt-[max(0.75rem,env(safe-area-inset-top))]" data-testid="photo-viewer">

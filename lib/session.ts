@@ -4,6 +4,7 @@ export type Session = {
   name: string;
   userId: string;
   group: string;
+  vehicle?: string;
   expiresAt: number;
 };
 

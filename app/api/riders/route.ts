@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getStore } from "@/lib/store";
-import { safeGroup, safeId, safeName, validLatLng } from "@/lib/sanitize";
+import { safeGroup, safeId, safeName, safeRide, validLatLng } from "@/lib/sanitize";
 import { thinCrumbs, type Crumb } from "@/lib/trail";
 import type { Rider } from "@/lib/types";
 
@@ -56,7 +56,16 @@ export async function POST(req: Request) {
   if (!point) return json({ error: "Bad location" }, 400);
 
   const updatedAt = Date.now();
-  const rider: Rider = { userId, name, group, lat: point.lat, lng: point.lng, updatedAt };
+  const vehicle = safeRide(body.vehicle);
+  const rider: Rider = {
+    userId,
+    name,
+    group,
+    lat: point.lat,
+    lng: point.lng,
+    updatedAt,
+    ...(vehicle ? { vehicle } : {}),
+  };
   const record = body.record !== false;
   try {
     const store = getStore();

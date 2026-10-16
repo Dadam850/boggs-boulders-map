@@ -19,12 +19,14 @@ type Props = {
   selfFix?: { lat: number; lng: number; at: number } | null;
   selfTrail?: Crumb[];
   showCrumbs?: boolean;
+  showPhotos?: boolean;
   selfName?: string;
   opacity: number;
   showSheet?: boolean;
   compact?: boolean;
   command: Command;
   onPhoto: (photo: MapPhoto) => void;
+  onRider?: (userId: string) => void;
 };
 
 type ParkFeature = {
@@ -81,7 +83,7 @@ function lineFor(trail: Crumb[] | undefined, lat: number, lng: number): [number,
   return points;
 }
 
-export function TrailMap({ riders, trails, photos, selfId, selfFix, selfTrail, showCrumbs = true, selfName, opacity, showSheet = false, compact = false, command, onPhoto }: Props) {
+export function TrailMap({ riders, trails, photos, selfId, selfFix, selfTrail, showCrumbs = true, showPhotos = true, selfName, opacity, showSheet = false, compact = false, command, onPhoto, onRider }: Props) {
   const elRef = useRef<HTMLDivElement>(null);
   const [mapReady, setMapReady] = useState(false);
   const mapRef = useRef<LeafletMap | null>(null);
@@ -99,6 +101,8 @@ export function TrailMap({ riders, trails, photos, selfId, selfFix, selfTrail, s
   const crumbs = useRef(new globalThis.Map<string, Polyline>());
   const onPhotoRef = useRef(onPhoto);
   onPhotoRef.current = onPhoto;
+  const onRiderRef = useRef(onRider);
+  onRiderRef.current = onRider;
 
   useEffect(() => {
     let map: LeafletMap | undefined;
@@ -316,7 +320,7 @@ export function TrailMap({ riders, trails, photos, selfId, selfFix, selfTrail, s
       const seen = new Set<string>();
       const now = Date.now();
 
-      const draw = (id: string, lat: number, lng: number, html: string, opacityValue: number, z: number, anchor: [number, number]) => {
+      const draw = (id: string, userId: string, lat: number, lng: number, html: string, opacityValue: number, z: number, anchor: [number, number]) => {
         seen.add(id);
         let marker = markers.current.get(id);
         if (!marker) {
@@ -332,6 +336,7 @@ export function TrailMap({ riders, trails, photos, selfId, selfFix, selfTrail, s
             keyboard: true,
             title: selfName,
           });
+          marker.on("click", () => onRiderRef.current?.(userId));
           marker.addTo(layer);
           markers.current.set(id, marker);
         } else {
@@ -353,9 +358,10 @@ export function TrailMap({ riders, trails, photos, selfId, selfFix, selfTrail, s
         const fresh = now - selfFix.at < 20000;
         draw(
           `self:${selfId}`,
+          selfId,
           selfFix.lat,
           selfFix.lng,
-          `<div class="rider-pin self"><span class="dot"></span><span class="tag">${esc(selfName)}<br><small>${fresh ? "you · live" : "you · last fix"}</small></span></div>`,
+          `<div class="rider-pin self" data-testid="self-pin"><span class="dot"></span><span class="tag">${esc(selfName)}<br><small>${fresh ? "you · live" : "you · last fix"}</small></span></div>`,
           1,
           600,
           [13, 13],
@@ -366,6 +372,7 @@ export function TrailMap({ riders, trails, photos, selfId, selfFix, selfTrail, s
         if (rider.userId === selfId) continue;
         draw(
           `rider:${rider.userId}`,
+          rider.userId,
           rider.lat,
           rider.lng,
           `<div class="rider-pin" data-testid="rider-pin"><span class="dot"></span><span class="tag">${esc(rider.name)}<br><small>last seen ${esc(ageLabel(rider.updatedAt, now))}</small></span></div>`,
@@ -444,6 +451,15 @@ export function TrailMap({ riders, trails, photos, selfId, selfFix, selfTrail, s
       const L = await import("leaflet");
       if (!alive || !mapReady || !photoLayer.current) return;
       const layer = photoLayer.current;
+      if (!showPhotos) {
+        for (const [id, marker] of markers.current) {
+          if (id.startsWith("photo:")) {
+            marker.remove();
+            markers.current.delete(id);
+          }
+        }
+        return;
+      }
       const seen = new Set<string>();
       for (const photo of photos) {
         const id = `photo:${photo.id}`;
@@ -477,7 +493,7 @@ export function TrailMap({ riders, trails, photos, selfId, selfFix, selfTrail, s
     return () => {
       alive = false;
     };
-  }, [photos, mapReady]);
+  }, [photos, mapReady, showPhotos]);
 
   useEffect(() => {
     const map = mapRef.current;
