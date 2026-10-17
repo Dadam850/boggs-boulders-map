@@ -1489,7 +1489,10 @@ export function TrailApp() {
                   >
                     <p className="text-lg font-black leading-none">Message everyone</p>
                     <p className="mt-1 text-sm font-bold text-zinc-700">
-                      {messages.filter((message) => !message.toUserId).length} group notes
+                      {(() => {
+                        const count = messages.filter((message) => !message.toUserId).length;
+                        return `${count} group note${count === 1 ? "" : "s"}`;
+                      })()}
                     </p>
                   </button>
                   {others.length === 0 ? (
