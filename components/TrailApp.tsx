@@ -1103,6 +1103,9 @@ export function TrailApp() {
               data-testid="desk-paths"
               className="min-h-12 w-full text-base"
               onClick={() => {
+                // Collapse the control bar first so the map keeps full height under the panel.
+                setMenuOpen(false);
+                setConfirmClear(false);
                 setDeskPanel(true);
                 setDeskTarget(null);
                 bumpLayout();

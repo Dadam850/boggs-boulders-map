@@ -90,6 +90,7 @@ export function TrailMap({ riders, trails, photos, selfId, selfFix, selfTrail, s
   const elRef = useRef<HTMLDivElement>(null);
   const [mapReady, setMapReady] = useState(false);
   const mapRef = useRef<LeafletMap | null>(null);
+  const tilesRef = useRef<{ redraw: () => void } | null>(null);
   const sheetRef = useRef<ImageOverlay | null>(null);
   const parkLines = useRef<Polyline[]>([]);
   const poiLayer = useRef<LayerGroup | null>(null);
@@ -129,11 +130,12 @@ export function TrailMap({ riders, trails, photos, selfId, selfFix, selfTrail, s
         maxBoundsViscosity: 0.85,
       });
       L.control.zoom({ position: "topright" }).addTo(map);
-      L.tileLayer("/api/tiles/{z}/{x}/{y}", {
+      const tiles = L.tileLayer("/api/tiles/{z}/{x}/{y}", {
         maxZoom: 19,
         maxNativeZoom: 17,
         attribution: "Satellite · Esri World Imagery",
       }).addTo(map);
+      tilesRef.current = tiles;
 
       map.createPane("park-sheet");
       const sheetPane = map.getPane("park-sheet");
@@ -175,6 +177,7 @@ export function TrailMap({ riders, trails, photos, selfId, selfFix, selfTrail, s
       crumbMap.clear();
       map?.remove();
       mapRef.current = null;
+      tilesRef.current = null;
       setMapReady(false);
       sheetRef.current = null;
       parkLines.current = [];
@@ -201,10 +204,17 @@ export function TrailMap({ riders, trails, photos, selfId, selfFix, selfTrail, s
     if (!mapReady || !map) return;
     // Bottom chrome open/close changes usable size; without this tiles stay blank
     // until a full page refresh.
-    const refresh = () => map.invalidateSize({ animate: false });
+    const refresh = () => {
+      map.invalidateSize({ animate: false });
+      tilesRef.current?.redraw();
+    };
     refresh();
-    const id = window.setTimeout(refresh, 80);
-    return () => window.clearTimeout(id);
+    const id = window.setTimeout(refresh, 120);
+    const id2 = window.setTimeout(refresh, 320);
+    return () => {
+      window.clearTimeout(id);
+      window.clearTimeout(id2);
+    };
   }, [controlsCollapsed, layoutTick, mapReady]);
 
   useEffect(() => {
