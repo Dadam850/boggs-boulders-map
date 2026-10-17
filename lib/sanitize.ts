@@ -33,6 +33,16 @@ export function safeName(input: unknown) {
     .slice(0, 24);
 }
 
+/** Short glove-friendly chat text. */
+export function safeText(input: unknown) {
+  const raw = typeof input === "string" ? input : "";
+  return raw
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 280);
+}
+
 export function validLatLng(lat: unknown, lng: unknown): { lat: number; lng: number } | null {
   if (
     typeof lat !== "number" ||

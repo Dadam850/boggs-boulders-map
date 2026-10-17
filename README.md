@@ -40,6 +40,7 @@ If `AZURE_STORAGE_CONNECTION_STRING` and `AZURE_STORAGE_CONTAINER` are unset, ph
 - **Paths on / Paths off** only hides the lines on this phone. **Recording / Paused** stops new points. **Clear**, then **Erase path?**, deletes your path from blob storage. Friends keep their own paths.
 - The bottom bar starts minimized (Me / Menu / Camera). **Menu** opens the full controls; **Done** or **Smaller buttons** collapses it again so the map stays usable. Satellite tiles refresh in place when the bar opens or closes — no page reload.
 - Center on yourself with **Me**. Fit the whole group with **Everyone**.
+- Tap a rider pin for **Find** (fly the map to them) or **Message**. **Friends** lists the live group: **Message everyone**, or **Find** / **Message** one friend. Group notes and private notes sync with the same signal as location pins and drop off after 48 hours.
 - All rider breadcrumbs stay in blob storage across groups so the park desk can review them. Typing the desk group code (default `traildesk`, override with `BOGGS_ADMIN_CODE`) at login puts you in the main `boggs` ride group with an **All rider paths** panel to keep or clear any stored path when updating trails. That code is not advertised on the login screen.
 - The camera button opens the phone camera (`capture=environment`). The picture is compressed to a JPEG, pinned at the current GPS fix, and written to IndexedDB before any upload is attempted. A reload cannot lose it. When the upload returns OK, the pending copy is cleared and the blob in Azure is the copy the group loads.
 - Photos are not expired. Breadcrumb paths are not expired. Rider location dots are. A path stays on the map after that rider's dot ages off, until they erase it.
@@ -98,6 +99,7 @@ Blob layout:
 - `photos/{group}/{id}.json` — who, when, lat, lng
 - `riders/{group}/{userId}.json` — latest point only, removed 48 hours after `updatedAt`
 - `trails/{group}/{userId}.json` — the breadcrumb path, kept until that rider taps Clear. A cleared path stores `clearedAt` so an older upload cannot put those points back
+- `messages/{group}/{id}.json` — group or one-to-one notes, removed 48 hours after `createdAt`
 
 ## Deploy to map.brocksautos.com
 

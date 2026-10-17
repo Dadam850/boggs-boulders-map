@@ -10,6 +10,9 @@ export type ParkBounds = {
 /** Rider pins drop off the map after this long. Photos do not. */
 export const RIDER_TTL_MS = 48 * 60 * 60 * 1000;
 
+/** Group and friend messages drop off after this long. */
+export const MESSAGE_TTL_MS = 48 * 60 * 60 * 1000;
+
 /** Name-only login stays on the phone this long after the app was last opened. */
 export const SESSION_MS = 72 * 60 * 60 * 1000;
 

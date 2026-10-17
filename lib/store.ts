@@ -1,9 +1,9 @@
 import { BlobServiceClient, type ContainerClient } from "@azure/storage-blob";
 import fs from "fs/promises";
 import path from "path";
-import { RIDER_TTL_MS } from "./park";
+import { MESSAGE_TTL_MS, RIDER_TTL_MS } from "./park";
 import { thinCrumbs, type Crumb } from "./trail";
-import type { PhotoMeta, Rider, StoredTrail } from "./types";
+import type { ChatMessage, PhotoMeta, Rider, StoredTrail } from "./types";
 
 export type PhotoBlob = { jpeg: Buffer; meta: PhotoMeta };
 
@@ -20,6 +20,8 @@ export interface GroupStore {
   putPhoto(jpeg: Buffer, meta: PhotoMeta): Promise<void>;
   getPhoto(id: string): Promise<PhotoBlob | null>;
   listPhotos(group: string): Promise<PhotoMeta[]>;
+  postMessage(message: ChatMessage): Promise<ChatMessage>;
+  listMessages(group: string, userId: string): Promise<ChatMessage[]>;
 }
 
 async function readStream(stream: NodeJS.ReadableStream | undefined) {
@@ -64,6 +66,30 @@ function photoMetaKey(group: string, id: string) {
 }
 function photoJpegKey(group: string, id: string) {
   return `photos/${group}/${id}.jpg`;
+}
+function messageKey(group: string, id: string) {
+  return `messages/${group}/${id}.json`;
+}
+
+function cleanMessage(message: ChatMessage): ChatMessage | null {
+  if (!message?.id || !message.fromUserId || !message.group || !message.text) return null;
+  const toUserId = typeof message.toUserId === "string" && message.toUserId ? message.toUserId : null;
+  const toName = typeof message.toName === "string" && message.toName.trim() ? message.toName.trim().slice(0, 24) : null;
+  return {
+    id: message.id,
+    group: message.group,
+    fromUserId: message.fromUserId,
+    fromName: message.fromName || "Rider",
+    toUserId,
+    toName,
+    text: message.text,
+    createdAt: typeof message.createdAt === "number" ? message.createdAt : Date.now(),
+  };
+}
+
+function visibleTo(message: ChatMessage, userId: string) {
+  if (!message.toUserId) return true;
+  return message.toUserId === userId || message.fromUserId === userId;
 }
 
 class AzureGroupStore implements GroupStore {
@@ -245,6 +271,33 @@ class AzureGroupStore implements GroupStore {
     }
     photos.sort((a, b) => b.takenAt - a.takenAt);
     return photos;
+  }
+
+  async postMessage(message: ChatMessage) {
+    const cleaned = cleanMessage(message);
+    if (!cleaned) throw new Error("Bad message");
+    await this.putJson(messageKey(cleaned.group, cleaned.id), cleaned);
+    return cleaned;
+  }
+
+  async listMessages(group: string, userId: string) {
+    const container = await this.client();
+    const now = Date.now();
+    const messages: ChatMessage[] = [];
+    for await (const item of container.listBlobsFlat({ prefix: `messages/${group}/` })) {
+      if (!item.name.endsWith(".json")) continue;
+      const raw = await this.getJson<ChatMessage>(item.name);
+      const message = raw ? cleanMessage(raw) : null;
+      if (!message) continue;
+      if (now - message.createdAt > MESSAGE_TTL_MS) {
+        await container.getBlobClient(item.name).deleteIfExists();
+        continue;
+      }
+      if (!visibleTo(message, userId)) continue;
+      messages.push(message);
+    }
+    messages.sort((a, b) => a.createdAt - b.createdAt);
+    return messages;
   }
 }
 
@@ -443,6 +496,40 @@ class LocalGroupStore implements GroupStore {
     }
     photos.sort((a, b) => b.takenAt - a.takenAt);
     return photos;
+  }
+
+  async postMessage(message: ChatMessage) {
+    const cleaned = cleanMessage(message);
+    if (!cleaned) throw new Error("Bad message");
+    await this.putJson(messageKey(cleaned.group, cleaned.id), cleaned);
+    return cleaned;
+  }
+
+  async listMessages(group: string, userId: string) {
+    const dir = this.file(`messages/${group}`);
+    let names: string[] = [];
+    try {
+      names = await fs.readdir(dir);
+    } catch {
+      return [];
+    }
+    const now = Date.now();
+    const messages: ChatMessage[] = [];
+    for (const name of names) {
+      if (!name.endsWith(".json")) continue;
+      const key = `messages/${group}/${name}`;
+      const raw = await this.getJson<ChatMessage>(key);
+      const message = raw ? cleanMessage(raw) : null;
+      if (!message) continue;
+      if (now - message.createdAt > MESSAGE_TTL_MS) {
+        await fs.rm(this.file(key), { force: true });
+        continue;
+      }
+      if (!visibleTo(message, userId)) continue;
+      messages.push(message);
+    }
+    messages.sort((a, b) => a.createdAt - b.createdAt);
+    return messages;
   }
 }
 
