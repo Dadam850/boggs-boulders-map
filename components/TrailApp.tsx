@@ -114,6 +114,7 @@ export function TrailApp() {
   const [deskPanel, setDeskPanel] = useState(false);
   const [deskTarget, setDeskTarget] = useState<StoredTrail | null>(null);
   const [deskBusy, setDeskBusy] = useState(false);
+  const [hideLocationCard, setHideLocationCard] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const urls = useRef(new Set<string>());
   const fixRef = useRef<Fix | null>(null);
@@ -683,10 +684,11 @@ export function TrailApp() {
   );
 
   const showLocationCard =
-    gpsPhase === "need-tap" ||
-    gpsPhase === "denied" ||
-    gpsPhase === "unavailable" ||
-    (!fix && gpsPhase === "watching" && !!gpsError);
+    !hideLocationCard &&
+    (gpsPhase === "need-tap" ||
+      gpsPhase === "denied" ||
+      gpsPhase === "unavailable" ||
+      (!fix && gpsPhase === "watching" && !!gpsError));
   const showLocationSteps = gpsPhase === "denied" || gpsPhase === "unavailable";
 
   const status = !online
@@ -885,6 +887,15 @@ export function TrailApp() {
             </p>
             <Button type="button" data-testid="turn-on-location" className="mt-3 w-full" onClick={beginWatch}>
               Turn on location
+            </Button>
+            <Button
+              type="button"
+              variant="light"
+              data-testid="location-dismiss"
+              className="mt-2 w-full min-h-12 text-base"
+              onClick={() => setHideLocationCard(true)}
+            >
+              Hide for now
             </Button>
             {showLocationSteps ? <LocationSteps kind={deviceKind} /> : null}
           </div>
