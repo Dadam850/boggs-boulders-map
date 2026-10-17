@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isAdminGroup } from "@/lib/admin";
 import { getStore } from "@/lib/store";
 import { safeGroup, safeId, safeName, safeRide, validLatLng } from "@/lib/sanitize";
 import { thinCrumbs, type Crumb } from "@/lib/trail";
@@ -29,11 +30,16 @@ function json(data: unknown, status = 200) {
 }
 
 export async function GET(req: Request) {
-  const group = safeGroup(new URL(req.url).searchParams.get("group"));
+  const url = new URL(req.url);
+  const group = safeGroup(url.searchParams.get("group"));
+  const desk = isAdminGroup(url.searchParams.get("desk")) || isAdminGroup(req.headers.get("x-boggs-desk"));
   try {
     const store = getStore();
-    const [riders, trails] = await Promise.all([store.listRiders(group), store.listTrails(group)]);
-    return json({ riders, trails });
+    const [riders, trails] = await Promise.all([
+      store.listRiders(group),
+      desk ? store.listAllTrails() : store.listTrails(group),
+    ]);
+    return json({ riders, trails, desk });
   } catch (error) {
     console.error("list riders", error);
     return json({ error: "Couldn't read the group" }, 500);
@@ -67,12 +73,18 @@ export async function POST(req: Request) {
     ...(vehicle ? { vehicle } : {}),
   };
   const record = body.record !== false;
+  const desk =
+    isAdminGroup((body as { desk?: unknown }).desk) || isAdminGroup(req.headers.get("x-boggs-desk"));
   try {
     const store = getStore();
     await store.upsertRider(rider);
+    // Always persist the uploaded breadcrumb path so desk can review and update trails.
     await store.saveTrail(group, userId, name, readTrail(body.trail), record ? { lat: point.lat, lng: point.lng, at: updatedAt } : null);
-    const [riders, trails] = await Promise.all([store.listRiders(group), store.listTrails(group)]);
-    return json({ riders, trails });
+    const [riders, trails] = await Promise.all([
+      store.listRiders(group),
+      desk ? store.listAllTrails() : store.listTrails(group),
+    ]);
+    return json({ riders, trails, desk });
   } catch (error) {
     console.error("upsert rider", error);
     return json({ error: "Couldn't save the location" }, 500);

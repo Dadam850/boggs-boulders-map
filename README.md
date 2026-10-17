@@ -38,7 +38,9 @@ If `AZURE_STORAGE_CONNECTION_STRING` and `AZURE_STORAGE_CONTAINER` are unset, ph
 - Other riders show as a name and “last seen …”. Pins fade as they get older. The server drops a rider pin 48 hours after its last update.
 - Each phone keeps a breadcrumb of where that rider has driven. A new point is saved about every 12 meters and stored in Azure Blob until that rider erases it. The live dot still drops off after 48 hours. The path does not.
 - **Paths on / Paths off** only hides the lines on this phone. **Recording / Paused** stops new points. **Clear**, then **Erase path?**, deletes your path from blob storage. Friends keep their own paths.
+- The bottom bar starts minimized (Me / Menu / Camera). **Menu** opens the full controls; **Done** or **Smaller buttons** collapses it again so the map stays usable. Satellite tiles refresh in place when the bar opens or closes — no page reload.
 - Center on yourself with **Me**. Fit the whole group with **Everyone**.
+- All rider breadcrumbs stay in blob storage across groups so the park desk can review them. Typing the desk group code (default `traildesk`, override with `BOGGS_ADMIN_CODE`) at login puts you in the main `boggs` ride group with an **All rider paths** panel to keep or clear any stored path when updating trails. That code is not advertised on the login screen.
 - The camera button opens the phone camera (`capture=environment`). The picture is compressed to a JPEG, pinned at the current GPS fix, and written to IndexedDB before any upload is attempted. A reload cannot lose it. When the upload returns OK, the pending copy is cleared and the blob in Azure is the copy the group loads.
 - Photos are not expired. Breadcrumb paths are not expired. Rider location dots are. A path stays on the map after that rider's dot ages off, until they erase it.
 
@@ -85,6 +87,8 @@ Set these on the server only. Do not use the `NEXT_PUBLIC_` prefix.
 | --- | --- | --- |
 | `AZURE_STORAGE_CONNECTION_STRING` | `DefaultEndpointsProtocol=https;AccountName=...;AccountKey=...;EndpointSuffix=core.windows.net` | Account key the server uses to read and write blobs |
 | `AZURE_STORAGE_CONTAINER` | `trail-map` | Private container. Photos: `photos/{group}/{id}.jpg`. Riders: `riders/{group}/{userId}.json`. Paths: `trails/{group}/{userId}.json` |
+| `BOGGS_ADMIN_CODE` | `traildesk` | Desk group code that unlocks all-group path review. Default `traildesk` if unset |
+| `NEXT_PUBLIC_BOGGS_ADMIN_CODE` | `traildesk` | Same value as above when you change the default, so the phone recognizes the code at login |
 
 `/api/health` reports `"store": "azure"` when those variables are set, and `"store": "local"` when they are not.
 

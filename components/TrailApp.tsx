@@ -16,6 +16,7 @@ import {
   idbSetKv,
   idbSetRiders,
 } from "@/lib/db";
+import { adminCode, isAdminGroup } from "@/lib/admin";
 import { clearSession, loadSession, saveSession, type Session } from "@/lib/session";
 import { offlineTiles } from "@/lib/tiles";
 import { safeGroup, safeName, safeRide } from "@/lib/sanitize";
@@ -91,8 +92,9 @@ export function TrailApp() {
   const [gpsError, setGpsError] = useState("");
   const [gpsPhase, setGpsPhase] = useState<GpsPhase>("checking");
   const [deviceKind, setDeviceKind] = useState<DeviceKind>("other");
-  const [compact, setCompact] = useState(false);
+  const [compact, setCompact] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [layoutTick, setLayoutTick] = useState(0);
   const [riders, setRiders] = useState<Rider[]>([]);
   const [trails, setTrails] = useState<StoredTrail[]>([]);
   const [showCrumbs, setShowCrumbs] = useState(true);
@@ -109,6 +111,9 @@ export function TrailApp() {
   const [tileProgress, setTileProgress] = useState<{ done: number; total: number } | null>(null);
   const [mapSaved, setMapSaved] = useState(false);
   const [installEvent, setInstallEvent] = useState<BeforeInstallPromptEvent | null>(null);
+  const [deskPanel, setDeskPanel] = useState(false);
+  const [deskTarget, setDeskTarget] = useState<StoredTrail | null>(null);
+  const [deskBusy, setDeskBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const urls = useRef(new Set<string>());
   const fixRef = useRef<Fix | null>(null);
@@ -120,6 +125,25 @@ export function TrailApp() {
   recordRef.current = recordCrumbs;
   sessionRef.current = session;
   fixRef.current = fix;
+
+  const controlsCollapsed = compact && !menuOpen;
+
+  const bumpLayout = useCallback(() => {
+    setLayoutTick((n) => n + 1);
+  }, []);
+
+  const minimizeControls = useCallback(() => {
+    setMenuOpen(false);
+    setConfirmClear(false);
+    setDeskPanel(false);
+    setDeskTarget(null);
+    bumpLayout();
+  }, [bumpLayout]);
+
+  const deskHeaders = useCallback((): HeadersInit => {
+    if (!sessionRef.current?.desk) return {};
+    return { "x-boggs-desk": adminCode() };
+  }, []);
 
   const rememberUrl = useCallback((url: string) => {
     urls.current.add(url);
@@ -185,7 +209,21 @@ export function TrailApp() {
     (async () => {
       try {
         const existing = loadSession();
-        if (!cancelled) setSession(existing);
+        if (!cancelled && existing) {
+          // Older sessions may have stored the desk code as the group itself.
+          if (isAdminGroup(existing.group) && !existing.desk) {
+            const migrated = saveSession({
+              name: existing.name,
+              userId: existing.userId,
+              group: "boggs",
+              vehicle: existing.vehicle,
+              desk: true,
+            });
+            setSession(migrated);
+          } else {
+            setSession(existing);
+          }
+        }
         const savedOpacityRaw = localStorage.getItem("boggs.opacity");
         const savedOpacity = savedOpacityRaw === null ? Number.NaN : Number(savedOpacityRaw);
         if (!cancelled && Number.isFinite(savedOpacity)) setOpacity(Math.min(1, Math.max(0, savedOpacity)));
@@ -193,7 +231,9 @@ export function TrailApp() {
         if (!cancelled && localStorage.getItem("boggs.crumbs.show") === "0") setShowCrumbs(false);
         if (!cancelled && localStorage.getItem("boggs.photos") === "0") setShowPhotos(false);
         if (!cancelled && localStorage.getItem("boggs.crumbs.record") === "0") setRecordCrumbs(false);
-        if (!cancelled && localStorage.getItem("boggs.compact") === "1") setCompact(true);
+        // Default to the short button bar so the map stays usable. Only expand when they ask.
+        if (!cancelled && localStorage.getItem("boggs.compact") === "0") setCompact(false);
+        else if (!cancelled) setCompact(true);
         if (!cancelled) setDeviceKind(detectDevice());
         await rebuildPhotos();
         const savedFlag = await idbGetKv<string>("tilesSaved");
@@ -389,10 +429,11 @@ export function TrailApp() {
     const epoch = trailEpoch.current;
     try {
       let riderRes: Response;
+      const desk = deskHeaders();
       if (here) {
         riderRes = await fetch("/api/riders", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", ...desk },
           body: JSON.stringify({
             userId: current.userId,
             name: current.name,
@@ -402,20 +443,26 @@ export function TrailApp() {
             lng: here.lng,
             trail: trailRef.current,
             record: recordRef.current,
+            ...(current.desk ? { desk: adminCode() } : {}),
           }),
         });
       } else {
-        riderRes = await fetch(`/api/riders?group=${encodeURIComponent(current.group)}`);
+        const q = new URLSearchParams({ group: current.group });
+        if (current.desk) q.set("desk", adminCode());
+        riderRes = await fetch(`/api/riders?${q}`, { headers: desk });
       }
       if (riderRes.ok) {
-        const data = (await riderRes.json()) as { riders: Rider[]; trails?: StoredTrail[] };
+        const data = (await riderRes.json()) as { riders: Rider[]; trails?: StoredTrail[]; desk?: boolean };
         setRiders(data.riders);
         await idbSetRiders(current.group, data.riders);
         const nextTrails = data.trails ?? [];
         setTrails(nextTrails);
         await idbSetKv(`trails:${current.group}`, nextTrails);
+        if (current.desk && data.desk) {
+          await idbSetKv("trails:desk-all", nextTrails);
+        }
         if (epoch === trailEpoch.current) {
-          const mine = nextTrails.find((item) => item.userId === current.userId);
+          const mine = nextTrails.find((item) => item.userId === current.userId && item.group === current.group);
           if (mine) {
             const keptLocal = trailRef.current.filter((crumb) => !mine.clearedAt || crumb.at > mine.clearedAt);
             const merged = thinCrumbs([...mine.crumbs, ...keptLocal]);
@@ -449,7 +496,7 @@ export function TrailApp() {
     } catch {
       setSyncNote("Can't reach the group. Your spot is saved on this phone.");
     }
-  }, [rebuildPhotos]);
+  }, [rebuildPhotos, deskHeaders]);
 
   useEffect(() => {
     if (!session) return;
@@ -506,8 +553,12 @@ export function TrailApp() {
       await idbSetKv(`trail:${current.userId}`, []);
       const res = await fetch("/api/trails", {
         method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: current.userId, group: current.group }),
+        headers: { "Content-Type": "application/json", ...deskHeaders() },
+        body: JSON.stringify({
+          userId: current.userId,
+          group: current.group,
+          ...(current.desk ? { desk: adminCode() } : {}),
+        }),
       });
       if (!res.ok) {
         setSyncNote("Couldn't erase the saved path. Try again when you have signal.");
@@ -523,6 +574,58 @@ export function TrailApp() {
     }
   }
 
+  async function deskClearTrail(target: StoredTrail) {
+    setDeskBusy(true);
+    try {
+      const res = await fetch("/api/trails", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json", ...deskHeaders() },
+        body: JSON.stringify({ userId: target.userId, group: target.group, desk: adminCode() }),
+      });
+      if (!res.ok) {
+        setSyncNote("Couldn't update that path.");
+        return;
+      }
+      const data = (await res.json()) as { trails?: StoredTrail[] };
+      setTrails(data.trails ?? []);
+      setDeskTarget(null);
+      setSyncNote(`Cleared ${target.name}'s path.`);
+    } catch {
+      setSyncNote("Couldn't update that path.");
+    } finally {
+      setDeskBusy(false);
+    }
+  }
+
+  async function deskKeepTrail(target: StoredTrail) {
+    setDeskBusy(true);
+    try {
+      const res = await fetch("/api/trails", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...deskHeaders() },
+        body: JSON.stringify({
+          userId: target.userId,
+          group: target.group,
+          name: target.name,
+          crumbs: target.crumbs,
+          desk: adminCode(),
+        }),
+      });
+      if (!res.ok) {
+        setSyncNote("Couldn't save that path.");
+        return;
+      }
+      const data = (await res.json()) as { trails?: StoredTrail[] };
+      setTrails(data.trails ?? []);
+      setDeskTarget(null);
+      setSyncNote(`Saved ${target.name}'s path (${target.crumbs.length} points).`);
+    } catch {
+      setSyncNote("Couldn't save that path.");
+    } finally {
+      setDeskBusy(false);
+    }
+  }
+
   async function onLogin(event: React.FormEvent) {
     event.preventDefault();
     const clean = safeName(name);
@@ -530,11 +633,15 @@ export function TrailApp() {
       setLoginError("Type your name. That's the whole login.");
       return;
     }
+    const typedGroup = safeGroup(group);
+    const desk = isAdminGroup(typedGroup);
     const next = saveSession({
       name: clean,
       userId: crypto.randomUUID(),
-      group: safeGroup(group),
+      // Desk code rides with the main park group so live pins still match everyone else.
+      group: desk ? "boggs" : typedGroup,
       vehicle: safeRide(vehicle),
+      ...(desk ? { desk: true } : {}),
     });
     setSession(next);
     setLoginError("");
@@ -710,7 +817,8 @@ export function TrailApp() {
         showPhotos={showPhotos}
         opacity={opacity}
         showSheet={showSheet}
-        compact={compact}
+        controlsCollapsed={controlsCollapsed}
+        layoutTick={layoutTick}
         command={command}
         onPhoto={setOpenPhoto}
         onRider={(userId) => {
@@ -785,7 +893,7 @@ export function TrailApp() {
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[2000] border-t-[3px] border-zinc-950 bg-[#fffdf6]/95 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur">
         <div className="pointer-events-auto mx-auto flex max-w-lg flex-col gap-2">
-          {compact && !menuOpen ? (
+          {controlsCollapsed ? (
             <div className="grid grid-cols-[1fr_1fr_3.25rem] gap-2">
               <Button
                 type="button"
@@ -803,7 +911,10 @@ export function TrailApp() {
                 variant="dark"
                 data-testid="controls-menu"
                 className="min-h-12 px-2 text-base"
-                onClick={() => setMenuOpen(true)}
+                onClick={() => {
+                  setMenuOpen(true);
+                  bumpLayout();
+                }}
               >
                 Menu
               </Button>
@@ -821,23 +932,34 @@ export function TrailApp() {
                 </svg>
               </Button>
             </div>
-          ) : null}
-          {!compact || menuOpen ? (
+          ) : (
             <>
-          <div className="flex justify-end">
+          <div className="flex gap-2">
+            {compact ? (
+              <Button
+                type="button"
+                variant="dark"
+                data-testid="controls-done"
+                className="min-h-11 flex-1 px-3 text-sm"
+                onClick={minimizeControls}
+              >
+                Done
+              </Button>
+            ) : null}
             <Button
               type="button"
               variant="light"
               data-testid="compact-toggle"
-              className="min-h-11 px-3 text-sm"
+              className={`min-h-11 px-3 text-sm ${compact ? "" : "ml-auto"}`}
               onClick={() => {
                 setCompact((current) => {
                   const next = !current;
                   localStorage.setItem("boggs.compact", next ? "1" : "0");
-                  if (!next) setMenuOpen(false);
                   return next;
                 });
-                if (compact) setMenuOpen(false);
+                setMenuOpen(false);
+                setConfirmClear(false);
+                bumpLayout();
               }}
             >
               {compact ? "Bigger buttons" : "Smaller buttons"}
@@ -850,6 +972,7 @@ export function TrailApp() {
               onClick={() => {
                 if (!fix) setGpsError("Still waiting for GPS.");
                 setCommand({ type: "me", id: Date.now() });
+                if (compact) minimizeControls();
               }}
             >
               Me
@@ -858,7 +981,10 @@ export function TrailApp() {
               type="button"
               variant="dark"
               data-testid="everyone"
-              onClick={() => setCommand({ type: "all", id: Date.now() })}
+              onClick={() => {
+                setCommand({ type: "all", id: Date.now() });
+                if (compact) minimizeControls();
+              }}
             >
               Everyone
             </Button>
@@ -868,7 +994,10 @@ export function TrailApp() {
               size="icon"
               data-testid="camera"
               aria-label="Take a photo and pin it here"
-              onClick={() => fileRef.current?.click()}
+              onClick={() => {
+                fileRef.current?.click();
+                if (compact) minimizeControls();
+              }}
             >
               <svg viewBox="0 0 24 24" className="h-8 w-8" fill="none" stroke="currentColor" strokeWidth="2.4">
                 <path d="M4 8h3l2-2h6l2 2h3v11H4V8z" />
@@ -919,7 +1048,9 @@ export function TrailApp() {
                   setConfirmClear(true);
                   return;
                 }
-                void clearMyPath();
+                void clearMyPath().then(() => {
+                  if (compact) minimizeControls();
+                });
               }}
             >
               {confirmClear ? "Erase path?" : "Clear"}
@@ -965,6 +1096,21 @@ export function TrailApp() {
             </Button>
             </div>
           </div>
+          {session.desk ? (
+            <Button
+              type="button"
+              variant="dark"
+              data-testid="desk-paths"
+              className="min-h-12 w-full text-base"
+              onClick={() => {
+                setDeskPanel(true);
+                setDeskTarget(null);
+                bumpLayout();
+              }}
+            >
+              All rider paths ({trails.length})
+            </Button>
+          ) : null}
           <label className="block">
             <span className="mb-1 flex items-center justify-between text-sm font-extrabold uppercase tracking-wide">
               Trail map
@@ -988,7 +1134,7 @@ export function TrailApp() {
             {mapSaved ? "Map saved on this phone" : online ? "Saving the park map for no-signal riding" : "Open this once on wifi before you roll out"}
           </p>
             </>
-          ) : null}
+          )}
         </div>
       </div>
 
@@ -1011,6 +1157,74 @@ export function TrailApp() {
             <Button type="button" variant="dark" className="mt-3 w-full" onClick={() => setProfile(null)}>
               Close
             </Button>
+          </div>
+        </div>
+      ) : null}
+
+      {deskPanel && session.desk ? (
+        <div className="absolute inset-0 z-[2600] flex flex-col bg-zinc-950/70 p-3 pt-[max(0.75rem,env(safe-area-inset-top))]" data-testid="desk-panel">
+          <div className="mx-auto flex h-full w-full max-w-lg flex-col overflow-hidden rounded-3xl border-[3px] border-zinc-950 bg-[#fffdf6]">
+            <div className="border-b-[3px] border-zinc-950 p-4">
+              <p className="text-2xl font-black leading-none">Rider paths</p>
+              <p className="mt-2 text-sm font-bold text-zinc-700">
+                Every group&apos;s breadcrumbs stay in storage. Open one to keep it or clear it when you update the trails.
+              </p>
+            </div>
+            <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
+              {trails.length === 0 ? (
+                <p className="p-2 text-base font-bold text-zinc-700">No stored paths yet. They show up as riders record.</p>
+              ) : (
+                trails.map((item) => (
+                  <button
+                    key={`${item.group}:${item.userId}`}
+                    type="button"
+                    data-testid="desk-trail"
+                    className={`w-full rounded-2xl border-[3px] border-zinc-950 px-3 py-3 text-left ${deskTarget?.userId === item.userId && deskTarget.group === item.group ? "bg-orange-100" : "bg-white"}`}
+                    onClick={() => setDeskTarget(item)}
+                  >
+                    <p className="text-lg font-black leading-none">{item.name}</p>
+                    <p className="mt-1 text-sm font-bold text-zinc-700">
+                      {item.group} · {item.crumbs.length} points
+                    </p>
+                  </button>
+                ))
+              )}
+            </div>
+            <div className="space-y-2 border-t-[3px] border-zinc-950 p-3">
+              {deskTarget ? (
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    type="button"
+                    data-testid="desk-keep"
+                    disabled={deskBusy || deskTarget.crumbs.length === 0}
+                    onClick={() => void deskKeepTrail(deskTarget)}
+                  >
+                    Keep path
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="light"
+                    data-testid="desk-clear"
+                    disabled={deskBusy}
+                    onClick={() => void deskClearTrail(deskTarget)}
+                  >
+                    Clear path
+                  </Button>
+                </div>
+              ) : null}
+              <Button
+                type="button"
+                variant="dark"
+                className="w-full"
+                onClick={() => {
+                  setDeskPanel(false);
+                  setDeskTarget(null);
+                  minimizeControls();
+                }}
+              >
+                Close
+              </Button>
+            </div>
           </div>
         </div>
       ) : null}

@@ -5,6 +5,8 @@ export type Session = {
   userId: string;
   group: string;
   vehicle?: string;
+  /** Set when the rider typed the desk code. Never labeled on the login screen. */
+  desk?: boolean;
   expiresAt: number;
 };
 

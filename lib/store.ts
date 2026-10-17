@@ -14,6 +14,8 @@ export interface GroupStore {
   listRiders(group: string): Promise<Rider[]>;
   saveTrail(group: string, userId: string, name: string, incoming: Crumb[], current: Crumb | null): Promise<StoredTrail>;
   listTrails(group: string): Promise<StoredTrail[]>;
+  listAllTrails(): Promise<StoredTrail[]>;
+  replaceTrail(group: string, userId: string, name: string, crumbs: Crumb[]): Promise<StoredTrail>;
   clearTrail(group: string, userId: string): Promise<void>;
   putPhoto(jpeg: Buffer, meta: PhotoMeta): Promise<void>;
   getPhoto(id: string): Promise<PhotoBlob | null>;
@@ -164,6 +166,36 @@ class AzureGroupStore implements GroupStore {
       trails.push({ ...trail, crumbs: Array.isArray(trail.crumbs) ? trail.crumbs : [] });
     }
     return trails;
+  }
+
+  async listAllTrails() {
+    const container = await this.client();
+    const trails: StoredTrail[] = [];
+    for await (const item of container.listBlobsFlat({ prefix: "trails/" })) {
+      if (!item.name.endsWith(".json")) continue;
+      const trail = await this.getJson<StoredTrail>(item.name);
+      if (!trail?.userId) continue;
+      trails.push({
+        ...trail,
+        group: trail.group || item.name.split("/")[1] || "",
+        crumbs: Array.isArray(trail.crumbs) ? trail.crumbs : [],
+      });
+    }
+    trails.sort((a, b) => a.name.localeCompare(b.name) || a.group.localeCompare(b.group));
+    return trails;
+  }
+
+  async replaceTrail(group: string, userId: string, name: string, crumbs: Crumb[]) {
+    const key = trailKey(group, userId);
+    const existing = await this.getJson<StoredTrail>(key);
+    const saved: StoredTrail = {
+      userId,
+      name: name || existing?.name || "Rider",
+      group,
+      crumbs: thinCrumbs(crumbs),
+    };
+    await this.putJson(key, saved);
+    return saved;
   }
 
   async clearTrail(group: string, userId: string) {
@@ -320,6 +352,38 @@ class LocalGroupStore implements GroupStore {
       trails.push({ ...trail, crumbs: Array.isArray(trail.crumbs) ? trail.crumbs : [] });
     }
     return trails;
+  }
+
+  async listAllTrails() {
+    const root = this.file("trails");
+    let groups: string[] = [];
+    try {
+      groups = await fs.readdir(root);
+    } catch {
+      return [];
+    }
+    const trails: StoredTrail[] = [];
+    for (const group of groups) {
+      const listed = await this.listTrails(group);
+      for (const trail of listed) {
+        trails.push({ ...trail, group: trail.group || group });
+      }
+    }
+    trails.sort((a, b) => a.name.localeCompare(b.name) || a.group.localeCompare(b.group));
+    return trails;
+  }
+
+  async replaceTrail(group: string, userId: string, name: string, crumbs: Crumb[]) {
+    const key = trailKey(group, userId);
+    const existing = await this.getJson<StoredTrail>(key);
+    const saved: StoredTrail = {
+      userId,
+      name: name || existing?.name || "Rider",
+      group,
+      crumbs: thinCrumbs(crumbs),
+    };
+    await this.putJson(key, saved);
+    return saved;
   }
 
   async clearTrail(group: string, userId: string) {
