@@ -30,3 +30,16 @@ export type PhotoMeta = {
   lng: number;
   takenAt: number;
 };
+
+/** Group chat or a one-to-one note. `toUserId` null means everyone in the group. */
+export type ChatMessage = {
+  id: string;
+  group: string;
+  fromUserId: string;
+  fromName: string;
+  /** Null or omitted = message everyone in the group. */
+  toUserId?: string | null;
+  toName?: string | null;
+  text: string;
+  createdAt: number;
+};

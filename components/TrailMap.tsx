@@ -9,7 +9,10 @@ import type { PhotoMeta, Rider, StoredTrail } from "@/lib/types";
 
 export type MapPhoto = PhotoMeta & { localUrl: string; pending: boolean };
 
-type Command = { type: "me" | "all"; id: number } | null;
+type Command =
+  | { type: "me" | "all"; id: number }
+  | { type: "focus"; id: number; lat: number; lng: number }
+  | null;
 
 type Props = {
   riders: Rider[];
@@ -522,6 +525,10 @@ export function TrailMap({ riders, trails, photos, selfId, selfFix, selfTrail, s
     if (!mapReady || !map || !command) return;
     if (command.type === "me" && selfFix) {
       map.setView([selfFix.lat, selfFix.lng], 17, { animate: true });
+      return;
+    }
+    if (command.type === "focus") {
+      map.setView([command.lat, command.lng], 17, { animate: true });
       return;
     }
     if (command.type === "all") {

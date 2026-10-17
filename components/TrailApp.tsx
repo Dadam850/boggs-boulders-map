@@ -21,16 +21,42 @@ import { clearSession, loadSession, saveSession, type Session } from "@/lib/sess
 import { offlineTiles } from "@/lib/tiles";
 import { safeGroup, safeName, safeRide } from "@/lib/sanitize";
 import { appendCrumb, thinCrumbs, type Crumb } from "@/lib/trail";
-import type { PhotoMeta, Rider, StoredTrail } from "@/lib/types";
+import type { ChatMessage, PhotoMeta, Rider, StoredTrail } from "@/lib/types";
 
 const TrailMap = dynamic(() => import("@/components/TrailMap").then((m) => m.TrailMap), {
   ssr: false,
 });
 
 type Fix = { lat: number; lng: number; at: number };
-type Command = { type: "me" | "all"; id: number };
+type Command =
+  | { type: "me" | "all"; id: number }
+  | { type: "focus"; id: number; lat: number; lng: number };
+type ChatTarget = { kind: "everyone" } | { kind: "friend"; userId: string; name: string };
+type RiderProfile = {
+  userId: string;
+  name: string;
+  vehicle: string;
+  detail: string;
+  lat?: number;
+  lng?: number;
+  self?: boolean;
+};
 type DeviceKind = "ios" | "android" | "other";
 type GpsPhase = "checking" | "need-tap" | "watching" | "denied" | "unavailable";
+
+function chatSeenKey(group: string, userId: string) {
+  return `boggs.chat.seen:${group}:${userId}`;
+}
+
+function loadChatSeen(group: string, userId: string) {
+  const raw = localStorage.getItem(chatSeenKey(group, userId));
+  const n = raw ? Number(raw) : 0;
+  return Number.isFinite(n) ? n : 0;
+}
+
+function saveChatSeen(group: string, userId: string, at: number) {
+  localStorage.setItem(chatSeenKey(group, userId), String(at));
+}
 
 const GPS_OPTIONS: PositionOptions = {
   enableHighAccuracy: true,
@@ -99,7 +125,7 @@ export function TrailApp() {
   const [trails, setTrails] = useState<StoredTrail[]>([]);
   const [showCrumbs, setShowCrumbs] = useState(true);
   const [showPhotos, setShowPhotos] = useState(true);
-  const [profile, setProfile] = useState<{ name: string; vehicle: string; detail: string } | null>(null);
+  const [profile, setProfile] = useState<RiderProfile | null>(null);
   const [recordCrumbs, setRecordCrumbs] = useState(true);
   const [confirmClear, setConfirmClear] = useState(false);
   const [photos, setPhotos] = useState<MapPhoto[]>([]);
@@ -115,6 +141,13 @@ export function TrailApp() {
   const [deskTarget, setDeskTarget] = useState<StoredTrail | null>(null);
   const [deskBusy, setDeskBusy] = useState(false);
   const [hideLocationCard, setHideLocationCard] = useState(false);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [friendsOpen, setFriendsOpen] = useState(false);
+  const [chatTarget, setChatTarget] = useState<ChatTarget | null>(null);
+  const [draft, setDraft] = useState("");
+  const [chatBusy, setChatBusy] = useState(false);
+  const [chatSeenAt, setChatSeenAt] = useState(0);
+  const chatEndRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const urls = useRef(new Set<string>());
   const fixRef = useRef<Fix | null>(null);
@@ -138,6 +171,47 @@ export function TrailApp() {
     setConfirmClear(false);
     setDeskPanel(false);
     setDeskTarget(null);
+    bumpLayout();
+  }, [bumpLayout]);
+
+  const markChatSeen = useCallback((group: string, userId: string, at = Date.now()) => {
+    saveChatSeen(group, userId, at);
+    setChatSeenAt(at);
+  }, []);
+
+  const openFriends = useCallback(() => {
+    setFriendsOpen(true);
+    setChatTarget(null);
+    setProfile(null);
+    setDeskPanel(false);
+    setMenuOpen(false);
+    setConfirmClear(false);
+    const current = sessionRef.current;
+    if (current) markChatSeen(current.group, current.userId);
+    bumpLayout();
+  }, [bumpLayout, markChatSeen]);
+
+  const openChat = useCallback(
+    (target: ChatTarget) => {
+      setFriendsOpen(true);
+      setChatTarget(target);
+      setDraft("");
+      setProfile(null);
+      setDeskPanel(false);
+      setMenuOpen(false);
+      const current = sessionRef.current;
+      if (current) markChatSeen(current.group, current.userId);
+      bumpLayout();
+    },
+    [bumpLayout, markChatSeen],
+  );
+
+  const findRider = useCallback((lat: number, lng: number) => {
+    setCommand({ type: "focus", id: Date.now(), lat, lng });
+    setProfile(null);
+    setFriendsOpen(false);
+    setChatTarget(null);
+    setMenuOpen(false);
     bumpLayout();
   }, [bumpLayout]);
 
@@ -494,10 +568,31 @@ export function TrailApp() {
         }
         await rebuildPhotos();
       }
+
+      const msgQ = new URLSearchParams({ group: current.group, userId: current.userId });
+      const msgRes = await fetch(`/api/messages?${msgQ}`);
+      if (msgRes.ok) {
+        const data = (await msgRes.json()) as { messages: ChatMessage[] };
+        setMessages(Array.isArray(data.messages) ? data.messages : []);
+        await idbSetKv(`messages:${current.group}:${current.userId}`, data.messages ?? []);
+      }
     } catch {
       setSyncNote("Can't reach the group. Your spot is saved on this phone.");
     }
   }, [rebuildPhotos, deskHeaders]);
+
+  useEffect(() => {
+    if (!session) return;
+    setChatSeenAt(loadChatSeen(session.group, session.userId));
+    void idbGetKv<ChatMessage[]>(`messages:${session.group}:${session.userId}`).then((cached) => {
+      if (cached) setMessages(cached);
+    });
+  }, [session]);
+
+  useEffect(() => {
+    if (!friendsOpen || !chatTarget) return;
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [friendsOpen, chatTarget, messages.length]);
 
   useEffect(() => {
     if (!session) return;
@@ -542,6 +637,45 @@ export function TrailApp() {
       cancelled = true;
     };
   }, [session, online, mapSaved]);
+
+  async function sendChat(event?: React.FormEvent) {
+    event?.preventDefault();
+    const current = sessionRef.current;
+    const target = chatTarget;
+    const text = draft.trim();
+    if (!current || !target || !text || chatBusy) return;
+    setChatBusy(true);
+    try {
+      const res = await fetch("/api/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fromUserId: current.userId,
+          fromName: current.name,
+          group: current.group,
+          text,
+          toUserId: target.kind === "everyone" ? null : target.userId,
+          toName: target.kind === "everyone" ? null : target.name,
+        }),
+      });
+      if (!res.ok) {
+        setSyncNote("Couldn't send. Try again when you have signal.");
+        return;
+      }
+      const data = (await res.json()) as { messages?: ChatMessage[] };
+      const next = data.messages ?? [];
+      setMessages(next);
+      await idbSetKv(`messages:${current.group}:${current.userId}`, next);
+      setDraft("");
+      markChatSeen(current.group, current.userId, Date.now());
+      setOnline(true);
+      setSyncNote("");
+    } catch {
+      setSyncNote("Couldn't send. Try again when you have signal.");
+    } finally {
+      setChatBusy(false);
+    }
+  }
 
   async function clearMyPath() {
     const current = sessionRef.current;
@@ -682,6 +816,25 @@ export function TrailApp() {
     () => riders.filter((rider) => rider.userId !== session?.userId),
     [riders, session],
   );
+
+  const unreadCount = useMemo(() => {
+    if (!session) return 0;
+    return messages.filter((message) => message.fromUserId !== session.userId && message.createdAt > chatSeenAt).length;
+  }, [messages, session, chatSeenAt]);
+
+  const threadMessages = useMemo(() => {
+    if (!session || !chatTarget) return [];
+    if (chatTarget.kind === "everyone") {
+      return messages.filter((message) => !message.toUserId);
+    }
+    return messages.filter((message) => {
+      if (!message.toUserId) return false;
+      const withFriend =
+        (message.fromUserId === session.userId && message.toUserId === chatTarget.userId) ||
+        (message.fromUserId === chatTarget.userId && message.toUserId === session.userId);
+      return withFriend;
+    });
+  }, [messages, chatTarget, session]);
 
   const showLocationCard =
     !hideLocationCard &&
@@ -826,18 +979,25 @@ export function TrailApp() {
         onRider={(userId) => {
           if (userId === session.userId) {
             setProfile({
+              userId: session.userId,
               name: session.name,
               vehicle: session.vehicle || "",
               detail: "You",
+              lat: fix?.lat,
+              lng: fix?.lng,
+              self: true,
             });
             return;
           }
           const rider = riders.find((item) => item.userId === userId);
           if (!rider) return;
           setProfile({
+            userId: rider.userId,
             name: rider.name,
             vehicle: rider.vehicle || "",
             detail: `Last seen ${ageLabel(rider.updatedAt)}`,
+            lat: rider.lat,
+            lng: rider.lng,
           });
         }}
       />
@@ -905,7 +1065,7 @@ export function TrailApp() {
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[2000] border-t-[3px] border-zinc-950 bg-[#fffdf6] p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
         <div className="pointer-events-auto mx-auto flex max-w-lg flex-col gap-2">
           {controlsCollapsed ? (
-            <div className="grid grid-cols-[1fr_1fr_3.25rem] gap-2">
+            <div className="grid grid-cols-[1fr_1fr_1fr_3.25rem] gap-2">
               <Button
                 type="button"
                 data-testid="center"
@@ -920,6 +1080,23 @@ export function TrailApp() {
               <Button
                 type="button"
                 variant="dark"
+                data-testid="friends-open"
+                className="relative min-h-12 px-2 text-base"
+                onClick={openFriends}
+              >
+                Friends
+                {unreadCount > 0 ? (
+                  <span
+                    data-testid="unread-badge"
+                    className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full border-2 border-zinc-950 bg-orange-500 px-1 text-[11px] font-black text-white"
+                  >
+                    {unreadCount > 9 ? "9+" : unreadCount}
+                  </span>
+                ) : null}
+              </Button>
+              <Button
+                type="button"
+                variant="light"
                 data-testid="controls-menu"
                 className="min-h-12 px-2 text-base"
                 onClick={() => {
@@ -976,7 +1153,7 @@ export function TrailApp() {
               {compact ? "Bigger buttons" : "Smaller buttons"}
             </Button>
           </div>
-          <div className="grid grid-cols-[1fr_1fr_4.5rem] gap-2">
+          <div className="grid grid-cols-2 gap-2">
             <Button
               type="button"
               data-testid="center"
@@ -998,6 +1175,25 @@ export function TrailApp() {
               }}
             >
               Everyone
+            </Button>
+          </div>
+          <div className="grid grid-cols-[1fr_4.5rem] gap-2">
+            <Button
+              type="button"
+              variant="dark"
+              data-testid="friends-open"
+              className="relative"
+              onClick={openFriends}
+            >
+              Friends
+              {unreadCount > 0 ? (
+                <span
+                  data-testid="unread-badge"
+                  className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full border-2 border-zinc-950 bg-orange-500 px-1 text-[11px] font-black text-white"
+                >
+                  {unreadCount > 9 ? "9+" : unreadCount}
+                </span>
+              ) : null}
             </Button>
             <Button
               type="button"
@@ -1117,6 +1313,8 @@ export function TrailApp() {
                 // Collapse the control bar first so the map keeps full height under the panel.
                 setMenuOpen(false);
                 setConfirmClear(false);
+                setFriendsOpen(false);
+                setChatTarget(null);
                 setDeskPanel(true);
                 setDeskTarget(null);
               }}
@@ -1167,9 +1365,192 @@ export function TrailApp() {
             <p className="text-3xl font-black leading-none">{profile.name}</p>
             <p className="mt-2 text-xl font-extrabold text-orange-700">{profile.vehicle || "No ride set"}</p>
             <p className="mt-1 text-base font-bold text-zinc-700">{profile.detail}</p>
-            <Button type="button" variant="dark" className="mt-3 w-full" onClick={() => setProfile(null)}>
-              Close
-            </Button>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <Button
+                type="button"
+                data-testid="rider-find"
+                disabled={profile.lat == null || profile.lng == null}
+                onClick={() => {
+                  if (profile.lat == null || profile.lng == null) return;
+                  findRider(profile.lat, profile.lng);
+                }}
+              >
+                Find
+              </Button>
+              {profile.self ? (
+                <Button type="button" variant="dark" onClick={() => setProfile(null)}>
+                  Close
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  variant="dark"
+                  data-testid="rider-message"
+                  onClick={() => openChat({ kind: "friend", userId: profile.userId, name: profile.name })}
+                >
+                  Message
+                </Button>
+              )}
+            </div>
+            {!profile.self ? (
+              <Button type="button" variant="light" className="mt-2 w-full" onClick={() => setProfile(null)}>
+                Close
+              </Button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      {friendsOpen ? (
+        <div
+          className="pointer-events-none absolute inset-0 z-[2600] flex flex-col justify-end p-3 pb-[max(4.5rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))]"
+          data-testid="friends-panel"
+        >
+          <div className="pointer-events-auto mx-auto flex max-h-[72dvh] w-full max-w-lg flex-col overflow-hidden rounded-3xl border-[3px] border-zinc-950 bg-[#fffdf6] shadow-[4px_4px_0_#111]">
+            {chatTarget ? (
+              <>
+                <div className="flex items-start justify-between gap-2 border-b-[3px] border-zinc-950 p-4">
+                  <div>
+                    <p className="text-2xl font-black leading-none">
+                      {chatTarget.kind === "everyone" ? "Everyone" : chatTarget.name}
+                    </p>
+                    <p className="mt-1 text-sm font-bold text-zinc-700">
+                      {chatTarget.kind === "everyone"
+                        ? "Message the whole group"
+                        : "Private note · tap Find on their pin to navigate"}
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="light"
+                    data-testid="chat-back"
+                    className="min-h-11 px-3 text-sm"
+                    onClick={() => {
+                      setChatTarget(null);
+                      setDraft("");
+                    }}
+                  >
+                    Back
+                  </Button>
+                </div>
+                <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3" data-testid="chat-thread">
+                  {threadMessages.length === 0 ? (
+                    <p className="p-2 text-base font-bold text-zinc-700">No messages yet. Say where you are.</p>
+                  ) : (
+                    threadMessages.map((message) => {
+                      const mine = message.fromUserId === session.userId;
+                      return (
+                        <div
+                          key={message.id}
+                          data-testid="chat-bubble"
+                          className={`max-w-[90%] rounded-2xl border-[3px] border-zinc-950 px-3 py-2 ${mine ? "ml-auto bg-orange-100" : "bg-white"}`}
+                        >
+                          <p className="text-xs font-extrabold uppercase tracking-wide text-zinc-600">
+                            {mine ? "You" : message.fromName}
+                            {" · "}
+                            {formatWhen(message.createdAt)}
+                          </p>
+                          <p className="mt-1 text-lg font-bold leading-snug">{message.text}</p>
+                        </div>
+                      );
+                    })
+                  )}
+                  <div ref={chatEndRef} />
+                </div>
+                <form onSubmit={sendChat} className="flex gap-2 border-t-[3px] border-zinc-950 p-3">
+                  <input
+                    data-testid="chat-input"
+                    value={draft}
+                    onChange={(event) => setDraft(event.target.value)}
+                    maxLength={280}
+                    enterKeyHint="send"
+                    placeholder={chatTarget.kind === "everyone" ? "Message everyone…" : `Message ${chatTarget.name}…`}
+                    className="h-14 min-w-0 flex-1 rounded-2xl border-[3px] border-zinc-950 bg-white px-3 text-lg font-bold outline-none focus:ring-4 focus:ring-orange-400"
+                  />
+                  <Button type="submit" data-testid="chat-send" disabled={chatBusy || !draft.trim()} className="min-h-14 px-4">
+                    Send
+                  </Button>
+                </form>
+              </>
+            ) : (
+              <>
+                <div className="border-b-[3px] border-zinc-950 p-4">
+                  <p className="text-2xl font-black leading-none">Friends</p>
+                  <p className="mt-2 text-sm font-bold text-zinc-700">
+                    Tap a rider to find them on the map or message them. Message everyone for the whole group.
+                  </p>
+                </div>
+                <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
+                  <button
+                    type="button"
+                    data-testid="message-everyone"
+                    className="w-full rounded-2xl border-[3px] border-zinc-950 bg-orange-100 px-3 py-3 text-left"
+                    onClick={() => openChat({ kind: "everyone" })}
+                  >
+                    <p className="text-lg font-black leading-none">Message everyone</p>
+                    <p className="mt-1 text-sm font-bold text-zinc-700">
+                      {(() => {
+                        const count = messages.filter((message) => !message.toUserId).length;
+                        return `${count} group note${count === 1 ? "" : "s"}`;
+                      })()}
+                    </p>
+                  </button>
+                  {others.length === 0 ? (
+                    <p className="p-2 text-base font-bold text-zinc-700">
+                      Nobody else is live yet. Share the group code so friends show up here.
+                    </p>
+                  ) : (
+                    others.map((rider) => (
+                      <div
+                        key={rider.userId}
+                        data-testid="friend-row"
+                        className="rounded-2xl border-[3px] border-zinc-950 bg-white p-3"
+                      >
+                        <p className="text-lg font-black leading-none">{rider.name}</p>
+                        <p className="mt-1 text-sm font-bold text-orange-700">
+                          {rider.vehicle || "Ride not set"} · last seen {ageLabel(rider.updatedAt)}
+                        </p>
+                        <div className="mt-2 grid grid-cols-2 gap-2">
+                          <Button
+                            type="button"
+                            data-testid="friend-find"
+                            className="min-h-12 text-base"
+                            onClick={() => findRider(rider.lat, rider.lng)}
+                          >
+                            Find
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="dark"
+                            data-testid="friend-message"
+                            className="min-h-12 text-base"
+                            onClick={() => openChat({ kind: "friend", userId: rider.userId, name: rider.name })}
+                          >
+                            Message
+                          </Button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+                <div className="border-t-[3px] border-zinc-950 p-3">
+                  <Button
+                    type="button"
+                    variant="light"
+                    data-testid="friends-close"
+                    className="w-full"
+                    onClick={() => {
+                      setFriendsOpen(false);
+                      setChatTarget(null);
+                      setDraft("");
+                      bumpLayout();
+                    }}
+                  >
+                    Close
+                  </Button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       ) : null}
