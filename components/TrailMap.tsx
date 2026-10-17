@@ -203,17 +203,22 @@ export function TrailMap({ riders, trails, photos, selfId, selfFix, selfTrail, s
     const map = mapRef.current;
     if (!mapReady || !map) return;
     // Bottom chrome open/close changes usable size; without this tiles stay blank
-    // until a full page refresh.
+    // until a full page refresh. Wait a frame so layout has settled first.
+    let alive = true;
+    let timeout = 0;
     const refresh = () => {
+      if (!alive) return;
       map.invalidateSize({ animate: false });
       tilesRef.current?.redraw();
     };
-    refresh();
-    const id = window.setTimeout(refresh, 120);
-    const id2 = window.setTimeout(refresh, 320);
+    const raf = window.requestAnimationFrame(() => {
+      refresh();
+      timeout = window.setTimeout(refresh, 160);
+    });
     return () => {
-      window.clearTimeout(id);
-      window.clearTimeout(id2);
+      alive = false;
+      window.cancelAnimationFrame(raf);
+      window.clearTimeout(timeout);
     };
   }, [controlsCollapsed, layoutTick, mapReady]);
 

@@ -891,7 +891,7 @@ export function TrailApp() {
         </div>
       ) : null}
 
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[2000] border-t-[3px] border-zinc-950 bg-[#fffdf6]/95 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur">
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[2000] border-t-[3px] border-zinc-950 bg-[#fffdf6] p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
         <div className="pointer-events-auto mx-auto flex max-w-lg flex-col gap-2">
           {controlsCollapsed ? (
             <div className="grid grid-cols-[1fr_1fr_3.25rem] gap-2">
@@ -1108,7 +1108,6 @@ export function TrailApp() {
                 setConfirmClear(false);
                 setDeskPanel(true);
                 setDeskTarget(null);
-                bumpLayout();
               }}
             >
               All rider paths ({trails.length})
@@ -1165,8 +1164,8 @@ export function TrailApp() {
       ) : null}
 
       {deskPanel && session.desk ? (
-        <div className="absolute inset-0 z-[2600] flex flex-col bg-zinc-950/70 p-3 pt-[max(0.75rem,env(safe-area-inset-top))]" data-testid="desk-panel">
-          <div className="mx-auto flex h-full w-full max-w-lg flex-col overflow-hidden rounded-3xl border-[3px] border-zinc-950 bg-[#fffdf6]">
+        <div className="pointer-events-none absolute inset-0 z-[2600] flex flex-col justify-end p-3 pb-[max(4.5rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))]" data-testid="desk-panel">
+          <div className="pointer-events-auto mx-auto flex max-h-[70dvh] w-full max-w-lg flex-col overflow-hidden rounded-3xl border-[3px] border-zinc-950 bg-[#fffdf6] shadow-[4px_4px_0_#111]">
             <div className="border-b-[3px] border-zinc-950 p-4">
               <p className="text-2xl font-black leading-none">Rider paths</p>
               <p className="mt-2 text-sm font-bold text-zinc-700">
